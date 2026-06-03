@@ -7,10 +7,11 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt">
 <style>
 /* ============================================================ palette */
 :root{
-  /* INDEX theme (default) — bone paper, ink, Base Blue */
+  /* INDEX theme (default) - bone paper, ink, Base Blue */
   --paper:#e7e3d7;
   --paper-2:#ded9ca;
   --card:#f0ede4;
@@ -22,7 +23,7 @@
   --hair:#d0c9b6;
   --hair-2:#c1baa3;
   --hair-strong:#a69c82;
-  --accent-raw:#0000FF;       /* Base Blue — exact, never a different shade */
+  --accent-raw:#0000FF;       /* Base Blue - exact, never a different shade */
   --accent:var(--accent-raw);
   --accent-soft:color-mix(in oklab,var(--accent) 10%, var(--card));
   --accent-ink:color-mix(in oklab,var(--accent) 64%, var(--ink));
@@ -50,10 +51,10 @@
   --hair:#2a2820;
   --hair-2:#37331f;
   --hair-strong:#4a4533;
-  --accent:color-mix(in oklab, var(--accent-raw) 58%, #ffffff);  /* lighten on dark — never Base Blue on a dark bg */
+  --accent:color-mix(in oklab, var(--accent-raw) 58%, #ffffff);  /* lighten on dark - never Base Blue on a dark bg */
   --accent-soft:color-mix(in oklab,var(--accent) 18%, var(--card));
   --accent-ink:color-mix(in oklab,var(--accent) 82%, var(--ink));
-  --base-square:#ffffff;      /* Base rule: never Base Blue on dark — mark flips to white */
+  --base-square:#ffffff;      /* Base rule: never Base Blue on dark - mark flips to white */
   --on-accent:#0b0b14;        /* text/icon on the dark-mode accent fill */
   --ok:#74c07f;
   --warn:#e0a94a;
@@ -100,9 +101,12 @@ a{color:var(--accent-ink);text-underline-offset:3px;text-decoration-color:var(--
   pointer-events:none;}
 .masthead[data-condensed="true"] .askrow{padding-top:12px;}
 .brand{display:flex;align-items:center;gap:11px;}
-/* Base logo mark — blue square, fixed 2px radius, never gradient (Base brand rule) */
+/* Base logo mark - blue square, fixed 2px radius, never gradient (Base brand rule) */
 .basemark{width:21px;height:21px;flex:0 0 auto;background:var(--base-square);border-radius:2px;
   align-self:center;box-shadow:0 0 0 1px color-mix(in oklab,var(--base-square) 30%, transparent);}
+.brand{color:inherit;text-decoration:none;}
+.brand:hover .mark em{text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:4px;}
+.brand:focus-visible{outline:2px solid var(--accent);outline-offset:5px;}
 .brand .mark{font-family:"Archivo",sans-serif;font-stretch:125%;font-size:25px;font-weight:800;
   letter-spacing:-.005em;line-height:1;white-space:nowrap;text-transform:uppercase;}
 .brand .mark em{font-style:normal;color:var(--accent);}
@@ -131,7 +135,7 @@ a{color:var(--accent-ink);text-underline-offset:3px;text-decoration-color:var(--
 .ask .clr{flex:0 0 auto;font-size:13px;color:var(--faint);padding:6px 10px;border-radius:0;}
 .ask .clr:hover{color:var(--bad);background:var(--card-sunk);}
 
-/* lens switch — the hero control */
+/* lens switch */
 .lens{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;gap:5px;justify-content:center;}
 .lens .ll{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--faint);font-weight:500;white-space:nowrap;}
 .lensswitch{display:flex;background:var(--card-sunk);border:1px solid var(--ink);border-radius:0;padding:3px;gap:0;position:relative;}
@@ -141,6 +145,20 @@ a{color:var(--accent-ink);text-underline-offset:3px;text-decoration-color:var(--
 .lensswitch button .ico{width:15px;height:15px;display:block;}
 .lensglide{position:absolute;top:3px;bottom:3px;border-radius:0;background:var(--ink);
   transition:left .26s cubic-bezier(.5,1.4,.5,1),width .26s cubic-bezier(.5,1.4,.5,1);z-index:1;}
+[data-lens="agent"] .masthead{border-top-color:var(--code-bg);}
+[data-lens="agent"] .lensswitch{border-color:var(--accent);background:color-mix(in oklab,var(--code-bg) 84%,var(--card));}
+[data-lens="agent"] .lensglide{background:var(--accent);}
+[data-lens="agent"] .lensswitch button{color:color-mix(in oklab,var(--code-ink) 76%,var(--muted));}
+[data-lens="agent"] .lensswitch button[data-on="true"]{color:var(--on-accent);}
+
+.modebar{display:flex;align-items:center;gap:8px;padding:0 0 14px;flex-wrap:wrap;
+  font-family:"IBM Plex Mono",monospace;font-size:11.5px;text-transform:uppercase;letter-spacing:.055em;color:var(--muted);}
+.modebar span{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--hair-2);background:var(--card);
+  padding:6px 10px;white-space:nowrap;}
+.modebar .mode-id{background:var(--ink);border-color:var(--ink);color:var(--paper);font-weight:700;}
+.modebar .mode-id svg{width:14px;height:14px;}
+[data-lens="agent"] .modebar span{background:var(--code-bg);border-color:color-mix(in oklab,var(--accent) 34%,var(--code-bg));color:var(--code-ink);}
+[data-lens="agent"] .modebar .mode-id{background:var(--accent);border-color:var(--accent);color:var(--on-accent);}
 
 /* ---- filter strip ---- */
 .filterstrip{display:flex;align-items:center;gap:14px;padding-bottom:15px;flex-wrap:wrap;}
@@ -229,6 +247,10 @@ a{color:var(--accent-ink);text-underline-offset:3px;text-decoration-color:var(--
 .card[data-open="true"]{border-color:var(--ink);}
 .card[data-open="true"]::before{transform:scaleY(1);}
 .card[data-dereg="true"]{opacity:.7;}
+.card[data-lens="agent"]{background:color-mix(in oklab,var(--code-bg) 4%,var(--card));
+  border-color:color-mix(in oklab,var(--accent) 22%,var(--hair-2));}
+.card[data-lens="agent"]::before{transform:scaleY(.45);background:var(--code-bg);}
+.card[data-lens="agent"][data-open="true"]::before{transform:scaleY(1);background:var(--accent);}
 
 /* clickable head */
 .chead{display:grid;grid-template-columns:auto 1fr auto;gap:18px;align-items:center;
@@ -250,11 +272,16 @@ a{color:var(--accent-ink);text-underline-offset:3px;text-decoration-color:var(--
 .ctitle .nm .idx{font-size:13px;font-family:"IBM Plex Mono",monospace;color:var(--accent);font-weight:500;letter-spacing:0;}
 .ctitle .nm .strike{text-decoration:line-through;text-decoration-color:var(--bad);color:var(--muted);}
 .ctitle .sum{margin-top:6px;font-size:16px;color:var(--ink-soft);line-height:1.5;max-width:62ch;text-wrap:pretty;}
+.card[data-lens="agent"] .ctitle .sum{font-family:"IBM Plex Mono",monospace;font-size:13px;letter-spacing:0;color:var(--accent-ink);
+  text-transform:uppercase;}
 .card[data-open="true"] .ctitle .sum{color:var(--muted);}
 .ctitle .glance{margin-top:11px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px;font-family:"IBM Plex Mono",monospace;}
 .tagk{display:inline-flex;align-items:center;gap:5px;color:var(--muted);}
 .tagk:hover{color:var(--accent-ink);}
 .tagk .h{color:var(--faint);}
+.agentglance{gap:7px;}
+.agentk{display:inline-flex;align-items:center;border:1px solid color-mix(in oklab,var(--accent) 28%,var(--hair-2));
+  background:var(--code-bg);color:var(--code-ink);padding:3px 7px;font-size:11px;line-height:1.25;}
 
 .cmeta{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;gap:8px;text-align:right;}
 .price{font-family:"IBM Plex Mono",monospace;font-size:23px;font-weight:600;line-height:1;white-space:nowrap;letter-spacing:-.01em;font-variant-numeric:tabular-nums;}
@@ -373,6 +400,9 @@ a{color:var(--accent-ink);text-underline-offset:3px;text-decoration-color:var(--
   .lensswitch button{padding:9px 11px;}
   .lensswitch button .lbl{display:none;}      /* icon-only on mobile */
   .lensswitch button .ico{width:18px;height:18px;}
+  .modebar{flex-wrap:nowrap;overflow-x:auto;margin:0 -14px;padding-left:14px;padding-right:14px;padding-bottom:12px;
+    scrollbar-width:none;-webkit-overflow-scrolling:touch;}
+  .modebar::-webkit-scrollbar{display:none;}
 
   /* brand row: compact, drop the stats clutter */
   .mh-top{padding:13px 0 11px;max-height:60px;}
@@ -390,6 +420,7 @@ a{color:var(--accent-ink);text-underline-offset:3px;text-decoration-color:var(--
   .fstrip-r{margin-left:0;flex:0 0 auto;gap:10px;}
   .masthead[data-condensed="true"] .filterstrip{display:none;}  /* slim bar when scrolled */
   .masthead[data-condensed="true"] .domnav{display:none;}
+  .masthead[data-condensed="true"] .modebar{display:none;}
 
   .domnav{margin:0 -14px;padding-left:14px;padding-right:14px;padding-bottom:12px;}
   .domchip{padding:8px 12px;gap:8px;}

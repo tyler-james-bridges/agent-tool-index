@@ -1,10 +1,25 @@
-// cat-card.jsx — CapabilityCard: collapsed glance + expanded dossier (Human / Agent lens)
+// cat-card.jsx - CapabilityCard: collapsed glance + expanded dossier (Human / Agent lens)
 const { useState: useKS } = React;
 
-function Glance({ t, onTag }) {
-  // integrity badge
-  const ver = t.manifest_status === "verified";
-  const gated = t.access === "gated";
+function AgentGlance({ t }) {
+  const chips = [
+    "/api/tools/" + t.id,
+    "POST /can_call",
+    t.has_x402 ? "x402" : "no payment",
+    t.has_auth ? "SIWE" : null,
+    t.access === "gated" ? "predicate" : "open",
+  ].filter(Boolean);
+
+  return (
+    <span className="glance agentglance">
+      {chips.map((chip) => <span className="agentk" key={chip}>{chip}</span>)}
+    </span>
+  );
+}
+
+function Glance({ t, lens, onTag }) {
+  if (lens === "agent") return <AgentGlance t={t} />;
+
   return (
     <span className="glance">
       {(t.tags || []).slice(0, 3).map((tg) => (
@@ -18,9 +33,20 @@ function Glance({ t, onTag }) {
   );
 }
 
+function cardSummary(t, lens, plan) {
+  if (lens !== "agent") {
+    const v = VERDICT_COPY[plan.status];
+    return v.label + " - " + v.line;
+  }
+
+  const settlement = t.has_x402 ? "x402 payment" : "no payment";
+  const auth = t.has_auth ? "SIWE auth" : "no auth";
+  const integrity = t.manifest_status === "verified" ? "hash verified" : "hash mismatch";
+  return "resolve record / " + settlement + " / " + auth + " / " + integrity;
+}
+
 function HumanLens({ t, ctx, push }) {
-  const { plan, items } = humanChecklist(t, ctx);
-  const v = VERDICT_COPY[plan.status];
+  const { items } = humanChecklist(t, ctx);
   const inputs = t.inputs || [];
   const outputs = t.outputs || [];
   const creator = short(t.creator, 5);
@@ -115,7 +141,7 @@ function AgentLens({ t, ctx, push }) {
         <span className="d">integrity</span>
         <span>{t.manifest_status === "verified"
           ? "Keccak(JCS(manifest)) equals the on-chain manifestHash."
-          : "Computed hash differs from the registered manifestHash — verification failed."}</span>
+          : "Computed hash differs from the registered manifestHash - verification failed."}</span>
       </div>
       <CodeBlock verb="hash" endpoint={t.manifest_status === "verified" ? "verified" : "mismatch"}
         html={hljson({ on_chain: t.manifest_hash, computed: t.computed_hash, match: t.manifest_status === "verified" })}
@@ -128,7 +154,6 @@ function AgentLens({ t, ctx, push }) {
 function CapabilityCard({ t, ctx, lens, open, onToggle, onTag }) {
   const push = useToast();
   const plan = planCall(t, ctx);
-  const v = VERDICT_COPY[plan.status];
   const pl = priceLine(t);
   const ver = t.manifest_status === "verified";
   const gated = t.access === "gated";
@@ -142,7 +167,7 @@ function CapabilityCard({ t, ctx, lens, open, onToggle, onTag }) {
   }
 
   return (
-    <div className="card" data-open={open} data-dereg={dereg}>
+    <div className="card" data-open={open} data-dereg={dereg} data-lens={lens}>
       <button className="chead" onClick={onToggle} aria-expanded={open}>
         <span className="cverdict">
           <span className={"vdot " + plan.status} />
@@ -154,8 +179,8 @@ function CapabilityCard({ t, ctx, lens, open, onToggle, onTag }) {
             <span className={dereg ? "strike" : ""}>{t.name}</span>
             <span className="idx">#{String(t.id).padStart(2, "0")}</span>
           </span>
-          <span className="sum">{v.label}{" — "}{v.line}</span>
-          <Glance t={t} onTag={onTag} />
+          <span className="sum">{cardSummary(t, lens, plan)}</span>
+          <Glance t={t} lens={lens} onTag={onTag} />
         </span>
 
         <span className="cmeta">

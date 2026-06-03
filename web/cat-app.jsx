@@ -1,4 +1,4 @@
-// cat-app.jsx — Capability Index: masthead, ask bar, Human/Agent lens, filters, caller ctx
+// cat-app.jsx - Capability Index: masthead, ask bar, Human/Agent lens, filters, caller ctx
 const { useState: useS, useMemo: useM, useEffect: useE, useRef: useR } = React;
 
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
@@ -42,7 +42,7 @@ function LensSwitch({ lens, setLens }) {
     window.addEventListener("resize", r); return () => window.removeEventListener("resize", r);
   }, [lens]);
   return (
-    <div className="lens">
+    <div className="lens" data-lens={lens}>
       <span className="ll">Read as</span>
       <div className="lensswitch" ref={wrap}>
         <span className="lensglide" style={{ left: glide.left, width: glide.width }} />
@@ -81,10 +81,7 @@ function App() {
   const [callableOnly, setCallableOnly] = useS(false);
   const [sort, setSort] = useS({ field: "id", dir: "asc" });
   const [domain, setDomain] = useS(null);            // null = browse all domains
-  // On mobile, start with everything collapsed so the list stays scannable;
-  // desktop has room to show the first card open as a demonstration.
-  const [openId, setOpenId] = useS(() =>
-    (typeof window !== "undefined" && window.innerWidth <= 760) || !REG.tools.length ? null : REG.tools[0].id);
+  const [openId, setOpenId] = useS(null);
   const [ctx, setCtx] = useS({ wallet: false, x402: true, auth: false, budget: 1.0 });
   const [condensed, setCondensed] = useS(false);
   const inputRef = useR(null);
@@ -119,7 +116,7 @@ function App() {
     return list;
   }, [parsed, callableOnly, sort, ctx, domain]);
 
-  // Browse mode: nothing narrowed → show domain "shelves" instead of one long list.
+  // Browse mode: nothing narrowed shows domain "shelves" instead of one long list.
   const browseMode = !q.trim() && !callableOnly && !domain;
   const shelves = useM(() => {
     if (!browseMode) return [];
@@ -141,21 +138,21 @@ function App() {
   const allOn = !anyFilter;
 
   return (
-    <div>
+    <div data-lens={lens}>
       <header className="masthead" data-condensed={condensed}>
         <div className="wrap">
           <div className="mh-top">
-            <div className="brand">
+            <a className="brand" href="/" aria-label="Agent Tool Index home">
               <span className="basemark" aria-hidden="true"></span>
               <span className="mark">Agent Tool <em>Index</em></span>
               <span className="sub">ERC-8257</span>
-            </div>
+            </a>
             <div className="mh-stats">
               <span className="st"><span className="live" /><b>{STAT.active}</b> active</span>
               <span className="st">Base · <b>8453</b></span>
               <span className="st"><b>{STAT.verified}</b> verified</span>
               <span className="st">synced <b>{relTime(REG.synced_at)}</b> ago</span>
-              <button className="st ep" onClick={() => { copyText(location.origin + "/llms.txt"); }}>llms.txt</button>
+              <a className="st ep" href="/llms.txt">llms.txt</a>
             </div>
           </div>
 
@@ -167,6 +164,23 @@ function App() {
               {q.trim() && <button className="clr" onClick={() => setQ("")}>clear</button>}
             </div>
             <LensSwitch lens={lens} setLens={setLens} />
+          </div>
+
+          <div className="modebar" data-lens={lens}>
+            <span className="mode-id">{lens === "agent" ? Ico.agent : Ico.human}{lens === "agent" ? "Agent readout" : "Human readout"}</span>
+            {lens === "agent" ? (
+              <>
+                <span>GET /api/tools</span>
+                <span>POST /can_call</span>
+                <span>invoke payload</span>
+              </>
+            ) : (
+              <>
+                <span>summary</span>
+                <span>requirements</span>
+                <span>inputs and outputs</span>
+              </>
+            )}
           </div>
 
           <div className="domnav">

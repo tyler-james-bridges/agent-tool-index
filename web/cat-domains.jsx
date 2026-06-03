@@ -1,4 +1,4 @@
-// cat-domains.jsx — domain taxonomy + browse-layer grouping for discoverability
+// cat-domains.jsx - domain taxonomy + browse-layer grouping for discoverability
 const { useMemo: useDM } = React;
 
 /* Each capability gets ONE primary domain, decided by first matching tag set

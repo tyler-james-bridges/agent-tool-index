@@ -1,4 +1,4 @@
-// cat-helpers.jsx — plain-language ("human") + machine-payload ("agent") layers
+// cat-helpers.jsx - plain-language ("human") + machine-payload ("agent") layers
 const { useState: useCS, useMemo: useCM, useRef: useCR, useEffect: useCE } = React;
 
 /* ---------- icons (line, inherit currentColor) ---------- */
@@ -43,9 +43,9 @@ function humanChecklist(t, ctx) {
 
   // manifest integrity
   if (t.manifest_status === "verified") {
-    items.push({ state: "met", text: <>Manifest <b>verified</b> — the published spec matches its on-chain hash.</> });
+    items.push({ state: "met", text: <>Manifest <b>verified</b> - the published spec matches its on-chain hash.</> });
   } else {
-    items.push({ state: "block", text: <>Manifest <b>hash mismatch</b> — the live spec doesn't match what was registered. Treat results with caution.</> });
+    items.push({ state: "block", text: <>Manifest <b>hash mismatch</b> - the live spec doesn't match what was registered. Treat results with caution.</> });
   }
 
   // access predicate
@@ -53,9 +53,9 @@ function humanChecklist(t, ctx) {
     const reqLabels = (t.access_reqs || []).map((r) => r.label).filter(Boolean);
     const cond = reqLabels.length ? reqLabels.join(", ") : "an on-chain predicate";
     if (!ctx.wallet) {
-      items.push({ state: "req", text: <>Gated access — your wallet must satisfy <b>{cond}</b>. Connect a wallet to check.</> });
+      items.push({ state: "req", text: <>Gated access - your wallet must satisfy <b>{cond}</b>. Connect a wallet to check.</> });
     } else {
-      items.push({ state: "req", text: <>Gated access — caller wallet must satisfy <b>{cond}</b>.</> });
+      items.push({ state: "req", text: <>Gated access - caller wallet must satisfy <b>{cond}</b>.</> });
     }
   }
 
@@ -70,9 +70,9 @@ function humanChecklist(t, ctx) {
   if (t.has_x402) {
     const p = fmtPrice(t.price_usdc);
     if (!ctx.x402) {
-      items.push({ state: "block", text: <>Paid via <b>x402</b>{p != null ? <> ({p} USDC/call)</> : null} — but your caller settings disallow payments.</> });
+      items.push({ state: "block", text: <>Paid via <b>x402</b>{p != null ? <> ({p} USDC/call)</> : null} - but your caller settings disallow payments.</> });
     } else if (p != null && ctx.budget < t.price_usdc) {
-      items.push({ state: "block", text: <>Costs <b>{p} USDC</b> per call — above your {ctx.budget.toFixed(2)} USDC budget.</> });
+      items.push({ state: "block", text: <>Costs <b>{p} USDC</b> per call - above your {ctx.budget.toFixed(2)} USDC budget.</> });
     } else {
       items.push({ state: ctx.x402 ? "met" : "req", text: <>Settles <b>{p != null ? p + " USDC" : "payment"}</b> per call over x402 before responding.</> });
     }
@@ -113,12 +113,12 @@ function canCallRecord(t, ctx) {
     if (t.has_auth) steps.push("sign SIWE challenge");
     if (t.access === "gated") steps.push("present predicate proof");
     if (t.has_x402) steps.push("attach x-payment (x402)");
-    steps.push("POST inputs → 200");
+    steps.push("POST inputs -> 200");
   }
   return {
     tool_id: t.id,
     status: plan.status,
-    caller: { wallet: ctx.wallet ? "0x…connected" : null, budget_usdc: ctx.budget, allow_x402: ctx.x402, has_auth: ctx.auth },
+    caller: { wallet: ctx.wallet ? "0x...connected" : null, budget_usdc: ctx.budget, allow_x402: ctx.x402, has_auth: ctx.auth },
     requirements: plan.req,
     blockers: plan.block,
     invocation: steps,

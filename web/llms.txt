@@ -1,0 +1,26 @@
+# Agent Tool Index
+
+Agent Tool Index is a visual and agent-readable index for ERC-8257 tools on Base.
+
+Primary site:
+- /
+
+Static agent files:
+- /llms.txt
+- /registry-data.js
+
+Registry:
+- Chain ID: 8453
+- Registry address: 0x265BB2DBFC0A8165C9A1941Eb1372F349baD2cf1
+
+The static deployment serves the current registry snapshot through /registry-data.js as a JavaScript assignment to window.REGISTRY. The Rust server version also exposes live API routes for tool records, intent resolution, call planning, stats, sync, and OpenAPI.
+
+Useful local/server API routes:
+- GET /api/tools
+- GET /api/tools/{tool_id}
+- POST /api/tools/{tool_id}/can_call
+- POST /api/resolve
+- GET /api/stats
+- GET /openapi.json
+
+Tool records include status, creator, metadata URI, access predicate, manifest verification status, x402 detection, endpoint, tags, inputs, outputs, and checked_at timestamps.

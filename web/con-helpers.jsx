@@ -1,4 +1,4 @@
-// con-helpers.jsx — glyphs, formatters, query parser, signatures, can_call
+// con-helpers.jsx - glyphs, formatters, query parser, signatures, can_call
 const { useState, useEffect, useRef, useCallback, createContext, useContext, useMemo } = React;
 
 const REG = window.REGISTRY;
