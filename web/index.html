@@ -314,52 +314,51 @@ main.wrap{padding-top:18px;}
 
 /* ---- AGENT lens ---- */
 .agent{display:flex;flex-direction:column;gap:18px;}
-.codeblock{background:var(--code-bg);border-radius:0;overflow:hidden;}
-.cb-head{display:flex;align-items:center;gap:10px;padding:11px 15px;border-bottom:1px solid rgba(255,255,255,.07);}
-.cb-head .verb{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;font-weight:500;color:#b9ad92;}
-.cb-head .ep{font-family:"IBM Plex Mono",monospace;font-size:13px;color:#8fb4ff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.cb-head .copy{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#b9ad92;padding:4px 9px;border-radius:0;border:1px solid rgba(255,255,255,.12);}
-.cb-head .copy:hover{color:#fff;background:rgba(255,255,255,.08);}
+.codeblock{background:var(--card-sunk);border-radius:0;overflow:hidden;}
+.cb-head{display:flex;align-items:center;gap:10px;padding:11px 15px;border-bottom:1px solid var(--hair);}
+.cb-head .verb{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;font-weight:500;color:var(--muted);}
+.cb-head .ep{font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--accent-ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.cb-head .copy{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);padding:4px 9px;border-radius:0;border:1px solid var(--hair-2);}
+.cb-head .copy:hover{color:var(--ink);background:var(--card);}
 .cb-head .copy svg{width:12px;height:12px;}
 .codeblock pre{margin:0;padding:15px 17px;font-family:"IBM Plex Mono",monospace;font-size:14px;line-height:1.7;
-  color:var(--code-ink);overflow-x:auto;white-space:pre;}
-.codeblock pre .k{color:#8fb4ff;}
-.codeblock pre .s{color:#9fd6a3;}
-.codeblock pre .n{color:#d6a3e0;}
-.codeblock pre .b{color:#e2b257;}
-.codeblock pre .c{color:#6c6452;}
-.codeblock pre .cm{color:#857b64;font-style:italic;}
+  color:var(--ink-soft);overflow-x:auto;white-space:pre;}
+.codeblock pre .k{color:var(--accent-ink);}
+.codeblock pre .s{color:var(--ok);}
+.codeblock pre .n{color:var(--muted);}
+.codeblock pre .b{color:var(--warn);}
+.codeblock pre .c{color:var(--faint);}
+.codeblock pre .cm{color:var(--faint);font-style:italic;}
 .agentnote{font-size:13px;color:var(--muted);font-style:italic;font-family:"Archivo",sans-serif;display:flex;gap:9px;align-items:baseline;}
 .agentnote .d{color:var(--accent-ink);font-style:normal;font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;flex:0 0 auto;}
 
-/* ---- AGENT readout: flat machine table. Terminal pane, dark in both themes
-   (same fixed palette as codeblocks, never the page theme vars) ---- */
-.agentpane{background:var(--code-bg);border:1px solid var(--hair-strong);margin-bottom:80px;
+/* ---- AGENT readout: flat machine table ---- */
+.agentpane{background:var(--paper);border:1px solid var(--hair-strong);margin-bottom:80px;
   font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;}
-.apane-head{display:flex;align-items:baseline;gap:10px;padding:11px 16px;border-bottom:1px solid rgba(255,255,255,.1);}
-.apane-head .averb{font-size:11px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:#b9ad92;}
-.apane-head .aep{font-size:13px;color:#8fb4ff;}
-.apane-head .acount{margin-left:auto;font-size:11.5px;color:#857b64;}
+.apane-head{display:flex;align-items:baseline;gap:10px;padding:11px 16px;border-bottom:1px solid var(--hair);}
+.apane-head .averb{font-size:11px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:var(--muted);}
+.apane-head .aep{font-size:13px;color:var(--accent-ink);}
+.apane-head .acount{margin-left:auto;font-size:11.5px;color:var(--faint);}
 .acols{display:grid;grid-template-columns:44px minmax(0,1fr) 110px 84px minmax(0,1fr);gap:14px;padding:8px 16px;
-  font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#6c6452;border-bottom:1px solid rgba(255,255,255,.08);}
-.arowwrap{border-bottom:1px solid rgba(255,255,255,.06);}
-.arowwrap[data-open="true"]{background:rgba(255,255,255,.03);}
+  font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);border-bottom:1px solid var(--hair);}
+.arowwrap{border-bottom:1px solid var(--hair);}
+.arowwrap[data-open="true"]{background:var(--card-sunk);}
 .arow{display:grid;grid-template-columns:44px minmax(0,1fr) 110px 84px minmax(0,1fr);gap:14px;width:100%;
-  text-align:left;padding:10px 16px;font-size:13px;line-height:1.5;color:var(--code-ink);align-items:baseline;}
-.arow:hover{background:rgba(255,255,255,.05);}
-.arow .aid{color:#8fb4ff;}
+  text-align:left;padding:10px 16px;font-size:13px;line-height:1.5;color:var(--ink-soft);align-items:baseline;}
+.arow:hover{background:var(--card);}
+.arow .aid{color:var(--accent-ink);}
 .arow .aname{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.arow .aname[data-dereg="true"]{text-decoration:line-through;color:#857b64;}
-.arow .averdict.callable{color:#74c07f;}
-.arow .averdict.conditional{color:#e0a94a;}
-.arow .averdict.blocked{color:#f0775c;}
-.arow .aprice{color:#d6a3e0;font-variant-numeric:tabular-nums;}
-.arow .aflags{color:#857b64;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.arow .aname[data-dereg="true"]{text-decoration:line-through;color:var(--faint);}
+.arow .averdict.callable{color:var(--ok);}
+.arow .averdict.conditional{color:var(--warn);}
+.arow .averdict.blocked{color:var(--bad);}
+.arow .aprice{color:var(--ink-soft);font-variant-numeric:tabular-nums;}
+.arow .aflags{color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .adetail{padding:6px 16px 18px;}
-.adetail .codeblock{border:1px solid rgba(255,255,255,.12);}
-.adetail .agentnote{color:#b9ad92;}
-.adetail .agentnote .d{color:#8fb4ff;}
-.anone{padding:26px 16px;font-size:13px;color:#857b64;}
+.adetail .codeblock{border:1px solid var(--hair-2);}
+.adetail .agentnote{color:var(--muted);}
+.adetail .agentnote .d{color:var(--accent-ink);}
+.anone{padding:26px 16px;font-size:13px;color:var(--faint);}
 @media(max-width:760px){
   .acols{display:none;}
   .arow{grid-template-columns:34px minmax(0,1fr) auto;gap:10px;padding:10px 12px;}
