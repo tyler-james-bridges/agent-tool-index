@@ -29,9 +29,8 @@ const STAT = (() => {
 const PILLS = [
   { key: "free",                 lab: "Free",          tone: "ok",     count: STAT.free },
   { key: "x402",                 lab: "Paid · x402",   tone: "accent", count: STAT.x402 },
-  { key: "access:gated",         lab: "Gated",         tone: "",       count: STAT.gated },
-  { key: "verified",             lab: "Verified",      tone: "ok",     count: STAT.verified },
   { key: "mismatch",             lab: "Manifest issues", tone: "",     count: STAT.mismatch },
+  { key: "access:gated",         lab: "Gated",         tone: "",       count: STAT.gated },
   { key: "status:deregistered",  lab: "Deregistered",  tone: "",       count: STAT.dereg },
 ];
 
@@ -173,7 +172,7 @@ function App() {
             <span className="di">{Ico.bolt}</span>
             <span className="dt"><span className="dn">All capabilities</span><span className="dc">{STAT.total} total</span></span>
           </button>
-          {DOMAINS.map((d) => (
+          {[...DOMAINS].sort((a, b) => domCounts[b.key] - domCounts[a.key]).map((d) => (
             <button className="domchip" key={d.key} data-on={domain === d.key} onClick={() => pickDomain(d.key)}>
               <span className="di">{d.icon}</span>
               <span className="dt"><span className="dn">{d.name}</span><span className="dc">{domCounts[d.key]} tools</span></span>
@@ -185,7 +184,7 @@ function App() {
           <div className="pills">
             <button className="pill" data-on={allOn} onClick={resetAll}>All <span className="ct">{STAT.total}</span></button>
             <button className="pill" data-tone="ok" data-on={callableOnly} onClick={() => setCallableOnly((v) => !v)}>
-              <span className="dot" style={{ background: "var(--ok)" }} />Callable for me
+              <span className="dot" style={{ background: "var(--ok)" }} />Callable now
             </button>
             {PILLS.map((p) => {
               const on = q.split(/\s+/).map((s) => s.toLowerCase()).includes(p.key.toLowerCase());
