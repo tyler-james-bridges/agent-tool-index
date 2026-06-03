@@ -8,6 +8,19 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt">
+<script>
+/* Set the theme before first paint so a refresh never flashes the wrong palette.
+   Must mirror initialTheme() in cat-app.jsx. */
+(function () {
+  try {
+    var t = localStorage.getItem("ati-theme");
+    if (t !== "ink" && t !== "index") {
+      t = matchMedia("(prefers-color-scheme: dark)").matches ? "ink" : "index";
+    }
+    document.documentElement.setAttribute("data-theme", t);
+  } catch (e) {}
+})();
+</script>
 <style>
 /* ============================================================ palette */
 :root{
