@@ -113,7 +113,7 @@ main.wrap{padding-top:18px;}
 .basemark{width:21px;height:21px;flex:0 0 auto;background:var(--base-square);border-radius:2px;
   align-self:center;box-shadow:0 0 0 1px color-mix(in oklab,var(--base-square) 30%, transparent);}
 .brand{color:inherit;text-decoration:none;}
-.brand:hover .mark em{text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:4px;}
+.brand:hover .mark{text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:4px;}
 .brand:focus-visible{outline:2px solid var(--accent);outline-offset:5px;}
 .brand .mark{font-family:"Archivo",sans-serif;font-stretch:125%;font-size:17px;font-weight:800;
   letter-spacing:-.005em;line-height:1;white-space:nowrap;text-transform:uppercase;}
@@ -139,6 +139,7 @@ main.wrap{padding-top:18px;}
 .lensswitch button .ico{width:15px;height:15px;display:block;}
 .lensglide{position:absolute;top:3px;bottom:3px;border-radius:0;background:var(--ink);
   transition:left .26s cubic-bezier(.5,1.4,.5,1),width .26s cubic-bezier(.5,1.4,.5,1);z-index:1;}
+[data-lens="agent"]{--base-square:#0000FF;}
 [data-lens="agent"] .lensswitch{border-color:var(--accent);background:color-mix(in oklab,var(--code-bg) 84%,var(--card));}
 [data-lens="agent"] .lensglide{background:var(--accent);}
 [data-lens="agent"] .lensswitch button{color:color-mix(in oklab,var(--code-ink) 76%,var(--muted));}
