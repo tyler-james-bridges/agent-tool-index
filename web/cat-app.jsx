@@ -43,7 +43,6 @@ function LensSwitch({ lens, setLens }) {
   }, [lens]);
   return (
     <div className="lens" data-lens={lens}>
-      <span className="ll">Read as</span>
       <div className="lensswitch" ref={wrap}>
         <span className="lensglide" style={{ left: glide.left, width: glide.width }} />
         <button ref={refs.human} data-on={lens === "human"} onClick={() => setLens("human")}><span className="ico">{Ico.human}</span><span className="lbl">Human</span></button>
@@ -83,18 +82,7 @@ function App() {
   const [domain, setDomain] = useS(null);            // null = browse all domains
   const [openId, setOpenId] = useS(null);
   const [ctx, setCtx] = useS({ wallet: false, x402: true, auth: false, budget: 1.0 });
-  const [condensed, setCondensed] = useS(false);
   const inputRef = useR(null);
-
-  useE(() => {
-    let ticking = false;
-    function onScroll() {
-      if (ticking) return; ticking = true;
-      requestAnimationFrame(() => { setCondensed(window.scrollY > 44); ticking = false; });
-    }
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
 
   useE(() => { document.documentElement.setAttribute("data-theme", tw.theme); }, [tw.theme]);
   // Agent lens flips the whole document to the terminal palette (see index.html vars).
@@ -141,24 +129,13 @@ function App() {
 
   return (
     <div data-lens={lens}>
-      <header className="masthead" data-condensed={condensed}>
+      <header className="masthead">
         <div className="wrap">
-          <div className="mh-top">
+          <div className="cmdbar">
             <a className="brand" href="/" aria-label="Agent Tool Index home">
               <span className="basemark" aria-hidden="true"></span>
               <span className="mark">Agent Tool <em>Index</em></span>
-              <span className="sub">ERC-8257</span>
             </a>
-            <div className="mh-stats">
-              <span className="st"><span className="live" /><b>{STAT.active}</b> active</span>
-              <span className="st">Base · <b>8453</b></span>
-              <span className="st"><b>{STAT.verified}</b> verified</span>
-              <span className="st">synced <b>{relTime(REG.synced_at)}</b> ago</span>
-              <a className="st ep" href="/llms.txt">llms.txt</a>
-            </div>
-          </div>
-
-          <div className="askrow">
             <div className="ask">
               <span className="q">⌕</span>
               <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)} spellCheck="false" autoComplete="off"
@@ -167,61 +144,44 @@ function App() {
             </div>
             <LensSwitch lens={lens} setLens={setLens} />
           </div>
-
-          <div className="modebar" data-lens={lens}>
-            <span className="mode-id">{lens === "agent" ? Ico.agent : Ico.human}{lens === "agent" ? "Agent readout" : "Human readout"}</span>
-            {lens === "agent" ? (
-              <>
-                <span>GET /api/tools</span>
-                <span>POST /can_call</span>
-                <span>invoke payload</span>
-              </>
-            ) : (
-              <>
-                <span>summary</span>
-                <span>requirements</span>
-                <span>inputs and outputs</span>
-              </>
-            )}
-          </div>
-
-          <div className="domnav">
-            <button className="domchip all" data-on={!domain} onClick={() => pickDomain(null)}>
-              <span className="di">{Ico.bolt}</span>
-              <span className="dt"><span className="dn">All capabilities</span><span className="dc">{STAT.total} total</span></span>
-            </button>
-            {DOMAINS.map((d) => (
-              <button className="domchip" key={d.key} data-on={domain === d.key} onClick={() => pickDomain(d.key)}>
-                <span className="di">{d.icon}</span>
-                <span className="dt"><span className="dn">{d.name}</span><span className="dc">{domCounts[d.key]} tools</span></span>
-              </button>
-            ))}
-          </div>
-
-          <div className="filterstrip">
-            <div className="pills">
-              <button className="pill" data-on={allOn} onClick={resetAll}>All <span className="ct">{STAT.total}</span></button>
-              <button className="pill" data-tone="ok" data-on={callableOnly} onClick={() => setCallableOnly((v) => !v)}>
-                <span className="dot" style={{ background: "var(--ok)" }} />Callable for me
-              </button>
-              {PILLS.map((p) => {
-                const on = q.split(/\s+/).map((s) => s.toLowerCase()).includes(p.key.toLowerCase());
-                return (
-                  <button className="pill" data-tone={p.tone} data-on={on} key={p.key} onClick={() => setQ(toggleToken(q, p.key))}>
-                    {p.lab} <span className="ct">{p.count}</span>
-                  </button>
-                );
-              })}
-            </div>
-            <div className="fstrip-r">
-              <span className="count"><b>{filtered.length}</b> of {STAT.total}</span>
-              <button className="sortbtn" onClick={cycleSort}>order: <b>{sortLab} {sort.dir === "asc" ? "↑" : "↓"}</b></button>
-            </div>
-          </div>
         </div>
       </header>
 
       <main className="wrap">
+        <div className="domnav">
+          <button className="domchip all" data-on={!domain} onClick={() => pickDomain(null)}>
+            <span className="di">{Ico.bolt}</span>
+            <span className="dt"><span className="dn">All capabilities</span><span className="dc">{STAT.total} total</span></span>
+          </button>
+          {DOMAINS.map((d) => (
+            <button className="domchip" key={d.key} data-on={domain === d.key} onClick={() => pickDomain(d.key)}>
+              <span className="di">{d.icon}</span>
+              <span className="dt"><span className="dn">{d.name}</span><span className="dc">{domCounts[d.key]} tools</span></span>
+            </button>
+          ))}
+        </div>
+
+        <div className="filterstrip">
+          <div className="pills">
+            <button className="pill" data-on={allOn} onClick={resetAll}>All <span className="ct">{STAT.total}</span></button>
+            <button className="pill" data-tone="ok" data-on={callableOnly} onClick={() => setCallableOnly((v) => !v)}>
+              <span className="dot" style={{ background: "var(--ok)" }} />Callable for me
+            </button>
+            {PILLS.map((p) => {
+              const on = q.split(/\s+/).map((s) => s.toLowerCase()).includes(p.key.toLowerCase());
+              return (
+                <button className="pill" data-tone={p.tone} data-on={on} key={p.key} onClick={() => setQ(toggleToken(q, p.key))}>
+                  {p.lab} <span className="ct">{p.count}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="fstrip-r">
+            <span className="count"><b>{filtered.length}</b> of {STAT.total}</span>
+            <button className="sortbtn" onClick={cycleSort}>order: <b>{sortLab} {sort.dir === "asc" ? "↑" : "↓"}</b></button>
+          </div>
+        </div>
+
         <CallerBar ctx={ctx} setCtx={setCtx} />
 
         {browseMode ? (
@@ -269,7 +229,9 @@ function App() {
 
         <footer className="pagefoot">
           <span className="mono">{short(REG.registry, 6)}</span>
-          <span>Registry of agent-callable capabilities on Base.</span>
+          <span>Base · 8453</span>
+          <span>{STAT.active} active · {STAT.verified} verified · synced {relTime(REG.synced_at)} ago</span>
+          <a href="/llms.txt">llms.txt</a>
           <span style={{ marginLeft: "auto" }}>Read this index as a human, or as your agent does.</span>
         </footer>
       </main>
