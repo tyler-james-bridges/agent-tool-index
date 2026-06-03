@@ -124,7 +124,7 @@ function App() {
   const browseMode = !q.trim() && !callableOnly && !domain;
   const shelves = useM(() => {
     if (!browseMode) return [];
-    return DOMAINS.map((d) => ({
+    return [...DOMAINS].sort((a, b) => domCounts[b.key] - domCounts[a.key]).map((d) => ({
       d, items: filtered.filter((t) => domainOf(t) === d.key),
     })).filter((s) => s.items.length);
   }, [browseMode, filtered]);
