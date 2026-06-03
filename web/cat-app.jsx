@@ -2,10 +2,18 @@
 const { useState: useS, useMemo: useM, useEffect: useE, useRef: useR } = React;
 
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
-  "theme": "index",
   "accent": "#0000FF",
   "startLens": "human"
 }/*EDITMODE-END*/;
+
+// Theme: explicit choice persists, otherwise follow the system preference.
+function initialTheme() {
+  try {
+    const saved = localStorage.getItem("ati-theme");
+    if (saved === "ink" || saved === "index") return saved;
+  } catch (e) {}
+  return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "ink" : "index";
+}
 
 const STAT = (() => {
   const s = { total: REG.tools.length, active: 0, dereg: 0, verified: 0, mismatch: 0, x402: 0, free: 0, gated: 0 };
@@ -82,13 +90,20 @@ function App() {
   const [domain, setDomain] = useS(null);            // null = browse all domains
   const [openId, setOpenId] = useS(null);
   const [ctx, setCtx] = useS({ wallet: false, x402: true, auth: false, budget: 1.0 });
+  const [theme, setTheme] = useS(initialTheme);
   const inputRef = useR(null);
 
-  useE(() => { document.documentElement.setAttribute("data-theme", tw.theme); }, [tw.theme]);
-  // Agent lens flips the whole document to the terminal palette (see index.html vars).
-  useE(() => { document.documentElement.setAttribute("data-lens", lens); }, [lens]);
+  useE(() => { document.documentElement.setAttribute("data-theme", theme); }, [theme]);
   useE(() => { document.documentElement.style.setProperty("--accent-raw", tw.accent); }, [tw.accent]);
   useE(() => { setLens(tw.startLens); }, [tw.startLens]);
+
+  function flipTheme() {
+    setTheme((t) => {
+      const next = t === "ink" ? "index" : "ink";
+      try { localStorage.setItem("ati-theme", next); } catch (e) {}
+      return next;
+    });
+  }
 
   const parsed = useM(() => parseQuery(q), [q]);
   const domCounts = useM(() => domainCounts(REG.tools), []);
@@ -143,6 +158,11 @@ function App() {
               {q.trim() && <button className="clr" onClick={() => setQ("")}>clear</button>}
             </div>
             <LensSwitch lens={lens} setLens={setLens} />
+            <button className="thbtn" onClick={flipTheme}
+              aria-label={theme === "ink" ? "Switch to light mode" : "Switch to dark mode"}
+              title={theme === "ink" ? "Light mode" : "Dark mode"}>
+              {theme === "ink" ? Ico.sun : Ico.moon}
+            </button>
           </div>
         </div>
       </header>
@@ -184,7 +204,9 @@ function App() {
 
         <CallerBar ctx={ctx} setCtx={setCtx} />
 
-        {browseMode ? (
+        {lens === "agent" ? (
+          <AgentTable tools={filtered} ctx={ctx} openId={openId} onToggle={toggleCard} />
+        ) : browseMode ? (
           <div className="shelves">
             {shelves.map(({ d, items }) => {
               const preview = items.slice(0, 4);
@@ -201,7 +223,7 @@ function App() {
                   </div>
                   <div className="shelf-cards">
                     {preview.map((t) => (
-                      <CapabilityCard key={t.id} t={t} ctx={ctx} lens={lens}
+                      <CapabilityCard key={t.id} t={t} ctx={ctx}
                         open={openId === t.id} onToggle={() => toggleCard(t.id)} onTag={(tg) => setQ(toggleToken(q, "#" + tg))} />
                     ))}
                   </div>
@@ -221,7 +243,7 @@ function App() {
                 <button className="reset" onClick={resetAll}>Reset the view</button>
               </div>
             ) : filtered.map((t) => (
-              <CapabilityCard key={t.id} t={t} ctx={ctx} lens={lens}
+              <CapabilityCard key={t.id} t={t} ctx={ctx}
                 open={openId === t.id} onToggle={() => toggleCard(t.id)} onTag={(tg) => setQ(toggleToken(q, "#" + tg))} />
             ))}
           </div>
@@ -238,7 +260,6 @@ function App() {
 
       <TweaksPanel>
         <TweakSection label="Surface" />
-        <TweakRadio label="Theme" value={tw.theme} options={["index", "ink"]} onChange={(v) => setTweak("theme", v)} />
         <TweakColor label="Signal color" value={tw.accent} options={["#0000FF", "#cf3a16", "#117a4d", "#6a2cc4"]} onChange={(v) => setTweak("accent", v)} />
         <TweakSection label="Reading" />
         <TweakRadio label="Open as" value={tw.startLens} options={["human", "agent"]} onChange={(v) => setTweak("startLens", v)} />

@@ -1,25 +1,7 @@
-// cat-card.jsx - CapabilityCard: collapsed glance + expanded dossier (Human / Agent lens)
+// cat-card.jsx - CapabilityCard (human lens) + AgentTable (agent lens machine readout)
 const { useState: useKS } = React;
 
-function AgentGlance({ t }) {
-  const chips = [
-    "/api/tools/" + t.id,
-    "POST /can_call",
-    t.has_x402 ? "x402" : "no payment",
-    t.has_auth ? "SIWE" : null,
-    t.access === "gated" ? "predicate" : "open",
-  ].filter(Boolean);
-
-  return (
-    <span className="glance agentglance">
-      {chips.map((chip) => <span className="agentk" key={chip}>{chip}</span>)}
-    </span>
-  );
-}
-
-function Glance({ t, lens, onTag }) {
-  if (lens === "agent") return <AgentGlance t={t} />;
-
+function Glance({ t, onTag }) {
   return (
     <span className="glance">
       {(t.tags || []).slice(0, 3).map((tg) => (
@@ -33,16 +15,9 @@ function Glance({ t, lens, onTag }) {
   );
 }
 
-function cardSummary(t, lens, plan) {
-  if (lens !== "agent") {
-    const v = VERDICT_COPY[plan.status];
-    return v.label + " - " + v.line;
-  }
-
-  const settlement = t.has_x402 ? "x402 payment" : "no payment";
-  const auth = t.has_auth ? "SIWE auth" : "no auth";
-  const integrity = t.manifest_status === "verified" ? "hash verified" : "hash mismatch";
-  return "resolve record / " + settlement + " / " + auth + " / " + integrity;
+function cardSummary(t, plan) {
+  const v = VERDICT_COPY[plan.status];
+  return v.label + " - " + v.line;
 }
 
 function HumanLens({ t, ctx, push }) {
@@ -151,7 +126,7 @@ function AgentLens({ t, ctx, push }) {
   );
 }
 
-function CapabilityCard({ t, ctx, lens, open, onToggle, onTag }) {
+function CapabilityCard({ t, ctx, open, onToggle, onTag }) {
   const push = useToast();
   const plan = planCall(t, ctx);
   const pl = priceLine(t);
@@ -161,13 +136,12 @@ function CapabilityCard({ t, ctx, lens, open, onToggle, onTag }) {
 
   function copyRecord(e) {
     e.stopPropagation();
-    const rec = lens === "agent" ? canCallRecord(t, ctx) : resolveRecord(t);
-    copyText(JSON.stringify(rec, null, 2));
-    push("Copied " + (lens === "agent" ? "can_call plan" : "tool record"));
+    copyText(JSON.stringify(resolveRecord(t), null, 2));
+    push("Copied tool record");
   }
 
   return (
-    <div className="card" data-open={open} data-dereg={dereg} data-lens={lens}>
+    <div className="card" data-open={open} data-dereg={dereg}>
       <button className="chead" onClick={onToggle} aria-expanded={open}>
         <span className="cverdict">
           <span className={"vdot " + plan.status} />
@@ -179,8 +153,8 @@ function CapabilityCard({ t, ctx, lens, open, onToggle, onTag }) {
             <span className={dereg ? "strike" : ""}>{t.name}</span>
             <span className="idx">#{String(t.id).padStart(2, "0")}</span>
           </span>
-          <span className="sum">{cardSummary(t, lens, plan)}</span>
-          <Glance t={t} lens={lens} onTag={onTag} />
+          <span className="sum">{cardSummary(t, plan)}</span>
+          <Glance t={t} onTag={onTag} />
         </span>
 
         <span className="cmeta">
@@ -199,14 +173,14 @@ function CapabilityCard({ t, ctx, lens, open, onToggle, onTag }) {
       {open && (
         <div className="cbody">
           <div className="cbody-in">
-            {lens === "agent" ? <AgentLens t={t} ctx={ctx} push={push} /> : <HumanLens t={t} ctx={ctx} push={push} />}
+            <HumanLens t={t} ctx={ctx} push={push} />
 
             <div className="cfoot">
               <button className="cact primary" disabled={plan.status === "blocked"} onClick={(e) => { e.stopPropagation(); push(plan.status === "conditional" ? "Resolve conditions, then call" : "Invocation ready"); }}>
                 {Ico.bolt}{plan.status === "blocked" ? "Cannot call" : plan.status === "conditional" ? "Call with conditions" : "Call now"}
               </button>
               <button className="cact" onClick={copyRecord}>
-                {Ico.copy}{lens === "agent" ? "Copy can_call" : "Copy record"}
+                {Ico.copy}Copy record
               </button>
               {t.endpoint && (
                 <a className="cact" href={t.endpoint} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
@@ -221,4 +195,52 @@ function CapabilityCard({ t, ctx, lens, open, onToggle, onTag }) {
   );
 }
 
-Object.assign(window, { CapabilityCard });
+/* ---- AGENT lens list: flat machine table, one row per registry record ---- */
+function AgentRow({ t, ctx, open, onToggle }) {
+  const push = useToast();
+  const plan = planCall(t, ctx);
+  const flags = [
+    t.has_x402 ? "x402" : "free",
+    t.has_auth ? "siwe" : null,
+    t.access === "gated" ? "gated" : null,
+    t.manifest_status === "verified" ? "hash:ok" : "hash:mismatch",
+    t.status === "deregistered" ? "dereg" : null,
+  ].filter(Boolean);
+  const p = fmtPrice(t.price_usdc);
+  const price = t.has_x402 ? (p != null ? p : "metered") : "0";
+
+  return (
+    <div className="arowwrap" data-open={open}>
+      <button className="arow" onClick={onToggle} aria-expanded={open}>
+        <span className="aid">{String(t.id).padStart(2, "0")}</span>
+        <span className="aname" data-dereg={t.status === "deregistered"}>{t.name}</span>
+        <span className={"averdict " + plan.status}>{plan.status}</span>
+        <span className="aprice">{price}</span>
+        <span className="aflags">{flags.join("  ")}</span>
+      </button>
+      {open && <div className="adetail"><AgentLens t={t} ctx={ctx} push={push} /></div>}
+    </div>
+  );
+}
+
+function AgentTable({ tools, ctx, openId, onToggle }) {
+  return (
+    <div className="agentpane">
+      <div className="apane-head">
+        <span className="averb">GET</span>
+        <span className="aep">/api/tools</span>
+        <span className="acount">{tools.length} records</span>
+      </div>
+      <div className="acols">
+        <span>id</span><span>name</span><span>verdict</span><span>usdc</span><span>flags</span>
+      </div>
+      {tools.length === 0 ? (
+        <div className="anone">0 records match the current query and filters</div>
+      ) : tools.map((t) => (
+        <AgentRow key={t.id} t={t} ctx={ctx} open={openId === t.id} onToggle={() => onToggle(t.id)} />
+      ))}
+    </div>
+  );
+}
+
+Object.assign(window, { CapabilityCard, AgentTable });
