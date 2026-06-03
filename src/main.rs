@@ -17,7 +17,7 @@ use crate::events::{apply_event_history, backfill_events};
 use crate::indexer::sync_registry;
 use crate::storage::{event_count, init_db, load_snapshot_db, save_events_db, save_snapshot_db};
 use crate::types::{CACHE_PATH, DB_PATH, DEFAULT_RPC_URL};
-use crate::web::{AppState, serve};
+use crate::web::{AppState, fallback_snapshot, serve};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -87,8 +87,11 @@ async fn main() -> Result<()> {
         }
         Command::Serve { addr } => {
             init_db(&cli.db_path)?;
-            let snapshot =
+            let mut snapshot =
                 load_snapshot_db(&cli.db_path)?.unwrap_or(load_snapshot(&cli.cache_path)?);
+            if snapshot.tools.is_empty() {
+                snapshot = fallback_snapshot()?;
+            }
             let state = AppState {
                 snapshot: Arc::new(RwLock::new(snapshot)),
                 rpc_url: cli.rpc_url,

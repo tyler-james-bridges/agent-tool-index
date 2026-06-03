@@ -6,6 +6,7 @@ use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::sync::RwLock;
@@ -15,6 +16,15 @@ use crate::events::{apply_event_history, backfill_events};
 use crate::indexer::{access_label, sync_registry};
 use crate::storage::{event_count, save_events_db, save_snapshot_db};
 use crate::types::{ManifestStatus, Snapshot, ToolRecord, ToolStatus};
+
+const INDEX_HTML: &str = include_str!("../web/index.html");
+const TWEAKS_PANEL_JSX: &str = include_str!("../web/tweaks-panel.jsx");
+const CON_HELPERS_JSX: &str = include_str!("../web/con-helpers.jsx");
+const CAT_DOMAINS_JSX: &str = include_str!("../web/cat-domains.jsx");
+const CAT_HELPERS_JSX: &str = include_str!("../web/cat-helpers.jsx");
+const CAT_CARD_JSX: &str = include_str!("../web/cat-card.jsx");
+const CAT_APP_JSX: &str = include_str!("../web/cat-app.jsx");
+const FALLBACK_REGISTRY_DATA_JS: &str = include_str!("../web/registry-data.js");
 
 #[derive(Clone)]
 pub struct AppState {
@@ -45,6 +55,13 @@ pub struct CanCallRequest {
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", get(index))
+        .route("/registry-data.js", get(registry_data_js))
+        .route("/tweaks-panel.jsx", get(tweaks_panel_jsx))
+        .route("/con-helpers.jsx", get(con_helpers_jsx))
+        .route("/cat-domains.jsx", get(cat_domains_jsx))
+        .route("/cat-helpers.jsx", get(cat_helpers_jsx))
+        .route("/cat-card.jsx", get(cat_card_jsx))
+        .route("/cat-app.jsx", get(cat_app_jsx))
         .route("/tools/{tool_id}", get(tool_page))
         .route("/api/tools", get(api_tools))
         .route("/api/tools/{tool_id}", get(api_tool))
@@ -57,9 +74,43 @@ pub fn router(state: AppState) -> Router {
         .with_state(state)
 }
 
-async fn index(State(state): State<AppState>) -> Html<String> {
-    let snapshot = state.snapshot.read().await.clone();
-    Html(render_index(&snapshot))
+async fn index() -> Html<&'static str> {
+    Html(INDEX_HTML)
+}
+
+async fn registry_data_js(State(state): State<AppState>) -> Response {
+    let snapshot = state.snapshot.read().await;
+    if snapshot.tools.is_empty() {
+        return javascript_response(FALLBACK_REGISTRY_DATA_JS.to_string());
+    }
+    match serde_json::to_string(&frontend_registry(&snapshot)) {
+        Ok(registry) => javascript_response(format!("window.REGISTRY = {registry};")),
+        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response(),
+    }
+}
+
+async fn tweaks_panel_jsx() -> Response {
+    babel_response(TWEAKS_PANEL_JSX)
+}
+
+async fn con_helpers_jsx() -> Response {
+    babel_response(CON_HELPERS_JSX)
+}
+
+async fn cat_domains_jsx() -> Response {
+    babel_response(CAT_DOMAINS_JSX)
+}
+
+async fn cat_helpers_jsx() -> Response {
+    babel_response(CAT_HELPERS_JSX)
+}
+
+async fn cat_card_jsx() -> Response {
+    babel_response(CAT_CARD_JSX)
+}
+
+async fn cat_app_jsx() -> Response {
+    babel_response(CAT_APP_JSX)
 }
 
 async fn tool_page(Path(tool_id): Path<u64>, State(state): State<AppState>) -> Response {
@@ -333,33 +384,479 @@ fn openapi_schemas() -> Value {
     })
 }
 
+fn frontend_registry(snapshot: &Snapshot) -> Value {
+    json!({
+        "chain_id": snapshot.chain_id,
+        "registry": snapshot.registry,
+        "tool_count": snapshot.tool_count,
+        "synced_at": snapshot.synced_at,
+        "tools": snapshot.tools.iter().map(frontend_tool).collect::<Vec<_>>(),
+    })
+}
+
+fn frontend_tool(tool: &ToolRecord) -> Value {
+    json!({
+        "id": tool.tool_id,
+        "status": status_text(tool),
+        "name": frontend_tool_name(tool),
+        "description": tool.description.as_deref().unwrap_or("No description published in the manifest."),
+        "endpoint": tool.endpoint,
+        "creator": tool.creator,
+        "metadata_uri": tool.metadata_uri,
+        "manifest_hash": tool.manifest_hash,
+        "computed_hash": tool.computed_manifest_hash,
+        "manifest_status": manifest_text(tool),
+        "access": frontend_access_label(tool),
+        "access_predicate": tool.access_predicate,
+        "access_reqs": access_requirements(tool),
+        "has_x402": tool.has_x402,
+        "has_auth": tool.has_auth,
+        "price_usdc": pricing_amount_usdc(tool),
+        "tags": tool.tags,
+        "inputs": manifest_inputs(tool),
+        "outputs": manifest_outputs(tool),
+        "erc": erc_label(tool),
+        "checked_at": tool.checked_at,
+    })
+}
+
+fn frontend_tool_name(tool: &ToolRecord) -> String {
+    tool.name
+        .as_deref()
+        .or(tool.metadata_uri.as_deref())
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("Tool #{}", tool.tool_id))
+}
+
+fn frontend_access_label(tool: &ToolRecord) -> &'static str {
+    match access_label(tool) {
+        "predicate" => "gated",
+        other => other,
+    }
+}
+
+fn manifest_inputs(tool: &ToolRecord) -> Vec<Value> {
+    let Some(manifest) = tool.manifest.as_ref() else {
+        return Vec::new();
+    };
+
+    for key in ["inputs", "parameters"] {
+        if let Some(inputs) = manifest.get(key).and_then(Value::as_array) {
+            let normalized = inputs
+                .iter()
+                .enumerate()
+                .filter_map(|(index, field)| normalize_input_field(field, index))
+                .collect::<Vec<_>>();
+            if !normalized.is_empty() {
+                return normalized;
+            }
+        }
+    }
+
+    for key in [
+        "inputSchema",
+        "input_schema",
+        "requestSchema",
+        "request_schema",
+        "parameters",
+    ] {
+        if let Some(inputs) = schema_inputs(manifest.get(key)) {
+            return inputs;
+        }
+    }
+
+    Vec::new()
+}
+
+fn normalize_input_field(field: &Value, index: usize) -> Option<Value> {
+    match field {
+        Value::Object(map) => {
+            let name = map
+                .get("name")
+                .or_else(|| map.get("key"))
+                .or_else(|| map.get("id"))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("input{}", index + 1));
+            Some(json!({
+                "name": name,
+                "type": map
+                    .get("type")
+                    .cloned()
+                    .unwrap_or_else(|| Value::String("object".to_string())),
+                "required": map
+                    .get("required")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+                "description": map
+                    .get("description")
+                    .and_then(Value::as_str)
+                    .unwrap_or(""),
+            }))
+        }
+        Value::String(name) => Some(json!({
+            "name": name,
+            "type": "string",
+            "required": true,
+            "description": "",
+        })),
+        _ => None,
+    }
+}
+
+fn schema_inputs(schema: Option<&Value>) -> Option<Vec<Value>> {
+    let schema = schema?;
+    let properties = schema.get("properties")?.as_object()?;
+    let required = schema
+        .get("required")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    Some(
+        properties
+            .iter()
+            .map(|(name, spec)| {
+                json!({
+                    "name": name,
+                    "type": schema_type(spec),
+                    "required": required.iter().any(|item| item == name),
+                    "description": spec
+                        .get("description")
+                        .and_then(Value::as_str)
+                        .unwrap_or(""),
+                })
+            })
+            .collect(),
+    )
+}
+
+fn schema_type(spec: &Value) -> Value {
+    if let Some(field_type) = spec.get("type") {
+        return field_type.clone();
+    }
+    if let Some(items) = spec.get("anyOf").and_then(Value::as_array) {
+        let types = items
+            .iter()
+            .filter_map(|item| item.get("type"))
+            .cloned()
+            .collect::<Vec<_>>();
+        if !types.is_empty() {
+            return Value::Array(types);
+        }
+    }
+    Value::String("object".to_string())
+}
+
+fn manifest_outputs(tool: &ToolRecord) -> Vec<String> {
+    let Some(manifest) = tool.manifest.as_ref() else {
+        return Vec::new();
+    };
+
+    for key in ["outputs", "returns"] {
+        if let Some(outputs) = manifest.get(key).and_then(Value::as_array) {
+            let normalized = outputs.iter().filter_map(output_name).collect::<Vec<_>>();
+            if !normalized.is_empty() {
+                return normalized;
+            }
+        }
+    }
+
+    for key in [
+        "outputSchema",
+        "output_schema",
+        "responseSchema",
+        "response_schema",
+    ] {
+        if let Some(outputs) = schema_outputs(manifest.get(key)) {
+            return outputs;
+        }
+    }
+
+    Vec::new()
+}
+
+fn output_name(output: &Value) -> Option<String> {
+    match output {
+        Value::String(name) => Some(name.to_string()),
+        Value::Object(map) => map
+            .get("name")
+            .or_else(|| map.get("key"))
+            .or_else(|| map.get("id"))
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        _ => None,
+    }
+}
+
+fn schema_outputs(schema: Option<&Value>) -> Option<Vec<String>> {
+    let schema = schema?;
+    Some(
+        schema
+            .get("properties")?
+            .as_object()?
+            .keys()
+            .map(|key| key.to_string())
+            .collect(),
+    )
+}
+
+fn access_requirements(tool: &ToolRecord) -> Vec<Value> {
+    let Some(manifest) = tool.manifest.as_ref() else {
+        return Vec::new();
+    };
+
+    let mut requirements = Vec::new();
+    for key in ["accessRequirements", "access_requirements"] {
+        collect_access_requirements(manifest.get(key), &mut requirements);
+    }
+    for key in ["access", "accessPredicate", "access_predicate"] {
+        if let Some(access) = manifest.get(key) {
+            collect_access_requirements(access.get("requirements"), &mut requirements);
+            collect_access_requirements(access.get("rules"), &mut requirements);
+            collect_access_requirements(Some(access), &mut requirements);
+        }
+    }
+    requirements
+}
+
+fn collect_access_requirements(value: Option<&Value>, requirements: &mut Vec<Value>) {
+    match value {
+        Some(Value::Array(items)) => {
+            for item in items {
+                if let Some(requirement) = normalize_access_requirement(item) {
+                    requirements.push(requirement);
+                }
+            }
+        }
+        Some(value) => {
+            if let Some(requirement) = normalize_access_requirement(value) {
+                requirements.push(requirement);
+            }
+        }
+        None => {}
+    }
+}
+
+fn normalize_access_requirement(value: &Value) -> Option<Value> {
+    match value {
+        Value::String(label) => Some(json!({ "label": label, "kind": "" })),
+        Value::Object(map) => {
+            let label = map
+                .get("label")
+                .or_else(|| map.get("name"))
+                .or_else(|| map.get("description"))
+                .and_then(Value::as_str)?;
+            let kind = map
+                .get("kind")
+                .or_else(|| map.get("type"))
+                .or_else(|| map.get("selector"))
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            Some(json!({ "label": label, "kind": kind }))
+        }
+        _ => None,
+    }
+}
+
+fn erc_label(tool: &ToolRecord) -> String {
+    let Some(manifest) = tool.manifest.as_ref() else {
+        return "draft".to_string();
+    };
+    for key in ["erc", "standard", "spec", "version"] {
+        if let Some(label) = manifest.get(key).and_then(Value::as_str) {
+            return label
+                .trim_start_matches("ERC-")
+                .trim_start_matches("erc-")
+                .to_string();
+        }
+    }
+    if tool
+        .tags
+        .iter()
+        .any(|tag| tag.eq_ignore_ascii_case("erc-8257"))
+    {
+        "8257".to_string()
+    } else {
+        "draft".to_string()
+    }
+}
+
+fn javascript_response(body: String) -> Response {
+    text_response("application/javascript; charset=utf-8", body)
+}
+
+fn babel_response(body: &'static str) -> Response {
+    text_response("text/babel; charset=utf-8", body.to_string())
+}
+
+fn text_response(content_type: &'static str, body: String) -> Response {
+    let mut headers = HeaderMap::new();
+    headers.insert("content-type", HeaderValue::from_static(content_type));
+    (headers, body).into_response()
+}
+
+pub fn fallback_snapshot() -> Result<Snapshot> {
+    let registry_json = FALLBACK_REGISTRY_DATA_JS
+        .trim()
+        .strip_prefix("window.REGISTRY = ")
+        .unwrap_or(FALLBACK_REGISTRY_DATA_JS.trim())
+        .trim_end_matches(';');
+    let registry: Value = serde_json::from_str(registry_json)?;
+    let tools = registry
+        .get("tools")
+        .and_then(Value::as_array)
+        .map(|tools| {
+            tools
+                .iter()
+                .map(fallback_tool_record)
+                .collect::<Result<Vec<_>>>()
+        })
+        .transpose()?
+        .unwrap_or_default();
+
+    Ok(Snapshot {
+        chain_id: registry
+            .get("chain_id")
+            .and_then(Value::as_u64)
+            .unwrap_or(crate::types::BASE_CHAIN_ID),
+        registry: registry
+            .get("registry")
+            .and_then(Value::as_str)
+            .unwrap_or(crate::types::BASE_REGISTRY)
+            .to_string(),
+        tool_count: registry
+            .get("tool_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(tools.len() as u64),
+        synced_at: date_time_field(&registry, "synced_at").unwrap_or_else(Utc::now),
+        tools,
+    })
+}
+
+fn fallback_tool_record(tool: &Value) -> Result<ToolRecord> {
+    let tool_id = tool.get("id").and_then(Value::as_u64).unwrap_or_default();
+    let checked_at = date_time_field(tool, "checked_at").unwrap_or_else(Utc::now);
+    Ok(ToolRecord {
+        chain_id: tool
+            .get("chain_id")
+            .and_then(Value::as_u64)
+            .unwrap_or(crate::types::BASE_CHAIN_ID),
+        registry: tool
+            .get("registry")
+            .and_then(Value::as_str)
+            .unwrap_or(crate::types::BASE_REGISTRY)
+            .to_string(),
+        tool_id,
+        status: parse_tool_status(tool.get("status").and_then(Value::as_str)),
+        creator: string_field(tool, "creator"),
+        metadata_uri: string_field(tool, "metadata_uri"),
+        manifest_hash: string_field(tool, "manifest_hash"),
+        access_predicate: string_field(tool, "access_predicate"),
+        manifest_status: parse_manifest_status(tool.get("manifest_status").and_then(Value::as_str)),
+        computed_manifest_hash: string_field(tool, "computed_hash"),
+        name: string_field(tool, "name"),
+        description: string_field(tool, "description"),
+        endpoint: string_field(tool, "endpoint"),
+        tags: string_array_field(tool, "tags"),
+        has_x402: tool
+            .get("has_x402")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        has_auth: tool
+            .get("has_auth")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        error: None,
+        manifest: Some(fallback_manifest(tool)),
+        checked_at,
+    })
+}
+
+fn fallback_manifest(tool: &Value) -> Value {
+    let mut manifest = serde_json::Map::new();
+    for key in [
+        "name",
+        "description",
+        "endpoint",
+        "tags",
+        "inputs",
+        "outputs",
+        "erc",
+    ] {
+        if let Some(value) = tool.get(key) {
+            manifest.insert(key.to_string(), value.clone());
+        }
+    }
+    if let Some(access_reqs) = tool.get("access_reqs") {
+        manifest.insert("accessRequirements".to_string(), access_reqs.clone());
+    }
+    if tool
+        .get("has_auth")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        manifest.insert("authentication".to_string(), json!({ "type": "siwe" }));
+    }
+    if let Some(price) = tool.get("price_usdc").and_then(Value::as_f64) {
+        manifest.insert("pricing".to_string(), json!([{ "amount": price }]));
+    }
+    Value::Object(manifest)
+}
+
+fn parse_tool_status(status: Option<&str>) -> ToolStatus {
+    match status {
+        Some("active") => ToolStatus::Active,
+        Some("deregistered") => ToolStatus::Deregistered,
+        Some("read_error") => ToolStatus::ReadError,
+        _ => ToolStatus::ReadError,
+    }
+}
+
+fn parse_manifest_status(status: Option<&str>) -> ManifestStatus {
+    match status {
+        Some("verified") => ManifestStatus::Verified,
+        Some("hash_mismatch") => ManifestStatus::HashMismatch,
+        Some("fetch_error") => ManifestStatus::FetchError,
+        Some("parse_error") => ManifestStatus::ParseError,
+        _ => ManifestStatus::Unchecked,
+    }
+}
+
+fn date_time_field(value: &Value, key: &str) -> Option<DateTime<Utc>> {
+    DateTime::parse_from_rfc3339(value.get(key)?.as_str()?)
+        .ok()
+        .map(|date| date.with_timezone(&Utc))
+}
+
+fn string_field(value: &Value, key: &str) -> Option<String> {
+    value.get(key)?.as_str().map(str::to_string)
+}
+
+fn string_array_field(value: &Value, key: &str) -> Vec<String> {
+    value
+        .get(key)
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 pub async fn serve(addr: &str, state: AppState) -> Result<()> {
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, router(state)).await?;
     Ok(())
-}
-
-fn render_index(snapshot: &Snapshot) -> String {
-    let stats = snapshot.stats();
-    let rows = snapshot
-        .tools
-        .iter()
-        .map(render_tool_row)
-        .collect::<String>();
-    format!(
-        r##"<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>ERC-8257 Index</title>{style}<script src="https://unpkg.com/htmx.org@2.0.4"></script></head><body><main><section class="hero"><p class="eyebrow">opencode demo / Base / ERC-8257</p><h1>Agent Tool Registry Index</h1><p>Live explorer for every known tool ID in the Base ERC-8257 ToolRegistry. Built as agent-readable infra first, human UI second.</p><div class="actions"><button hx-post="/api/sync" hx-target="#sync-result">Sync Registry</button><a href="/api/tools">Agent JSON</a><a href="/api/resolve">Resolver</a><a href="/llms.txt">llms.txt</a></div><div id="sync-result" class="sync-result"></div></section><section class="stats"><div><strong>{total}</strong><span>Total IDs</span></div><div><strong>{active}</strong><span>Active</span></div><div><strong>{deregistered}</strong><span>Deregistered</span></div><div><strong>{verified}</strong><span>Verified</span></div><div><strong>{x402}</strong><span>x402</span></div><div><strong>{gated}</strong><span>Gated</span></div></section><section class="meta"><p><b>Registry</b> {registry}</p><p><b>Synced</b> {synced}</p></section><section class="tools"><div class="filters"><input id="search" placeholder="Search name, endpoint, creator, tag..." oninput="filterRows()"><select id="status-filter" onchange="filterRows()"><option value="">Any status</option><option value="active">Active</option><option value="deregistered">Deregistered</option><option value="read_error">Read error</option></select><select id="manifest-filter" onchange="filterRows()"><option value="">Any manifest</option><option value="verified">Verified</option><option value="hash_mismatch">Hash mismatch</option><option value="fetch_error">Fetch error</option><option value="unchecked">Unchecked</option></select><select id="access-filter" onchange="filterRows()"><option value="">Any access</option><option value="open">Open</option><option value="predicate">Predicate</option><option value="unknown">Unknown</option></select><label><input id="x402-filter" type="checkbox" onchange="filterRows()"> x402 only</label></div><p id="visible-count" class="count"></p><table><thead><tr><th>ID</th><th>Status</th><th>Tool</th><th>Access</th><th>Manifest</th><th>Endpoint</th></tr></thead><tbody>{rows}</tbody></table></section></main>{script}</body></html>"##,
-        style = STYLE,
-        total = stats.total_ids,
-        active = stats.active,
-        deregistered = stats.deregistered,
-        verified = stats.verified_manifests,
-        x402 = stats.x402_tools,
-        gated = stats.gated_tools,
-        registry = snapshot.registry,
-        synced = snapshot.synced_at,
-        rows = rows,
-        script = FILTER_SCRIPT
-    )
 }
 
 fn render_detail(tool: &ToolRecord) -> String {
@@ -396,38 +893,6 @@ fn render_detail(tool: &ToolRecord) -> String {
         tags = html_escape::encode_text(&tool.tags.join(", ")),
         error = html_escape::encode_text(tool.error.as_deref().unwrap_or("none")),
         manifest = html_escape::encode_text(&manifest_json),
-    )
-}
-
-fn render_tool_row(tool: &ToolRecord) -> String {
-    let title = tool
-        .name
-        .as_deref()
-        .or(tool.metadata_uri.as_deref())
-        .unwrap_or("unknown");
-    let endpoint = tool.endpoint.as_deref().unwrap_or("");
-    let uri = tool.metadata_uri.as_deref().unwrap_or("");
-    let search_text = searchable_text(tool);
-    let haystack = html_escape::encode_double_quoted_attribute(&search_text);
-    format!(
-        r#"<tr data-search="{haystack}" data-status="{status}" data-manifest="{manifest}" data-access="{access}" data-x402="{has_x402}"><td><a href="/tools/{id}">#{id}</a></td><td>{status_badge}</td><td><b>{title}</b><small>{uri}</small></td><td>{access_badge}{x402_badge}</td><td>{manifest_badge}</td><td>{endpoint}</td></tr>"#,
-        haystack = haystack,
-        status = status_text(tool),
-        manifest = manifest_text(tool),
-        access = access_label(tool),
-        has_x402 = tool.has_x402,
-        id = tool.tool_id,
-        status_badge = badge(status_text(tool), status_text(tool)),
-        title = html_escape::encode_text(title),
-        uri = html_escape::encode_text(uri),
-        access_badge = badge(access_label(tool), access_label(tool)),
-        x402_badge = if tool.has_x402 {
-            badge("x402", "x402")
-        } else {
-            String::new()
-        },
-        manifest_badge = badge(manifest_text(tool), manifest_text(tool)),
-        endpoint = html_escape::encode_text(endpoint),
     )
 }
 
@@ -588,7 +1053,10 @@ fn invocation_steps(tool: &ToolRecord) -> Vec<String> {
 fn pricing_amount_usdc(tool: &ToolRecord) -> Option<f64> {
     let manifest = tool.manifest.as_ref()?;
     let pricing = manifest.get("pricing")?.as_array()?.first()?;
-    let amount = pricing.get("amount")?.as_str()?.parse::<f64>().ok()?;
+    let amount_value = pricing.get("amount")?;
+    let amount = amount_value
+        .as_f64()
+        .or_else(|| amount_value.as_str()?.parse::<f64>().ok())?;
     Some(if amount > 1_000.0 {
         amount / 1_000_000.0
     } else {
@@ -632,7 +1100,5 @@ fn optional_link(url: Option<&str>, label: &str) -> String {
     })
     .unwrap_or_default()
 }
-
-const FILTER_SCRIPT: &str = r#"<script>function filterRows(){const q=document.getElementById('search').value.toLowerCase();const status=document.getElementById('status-filter').value;const manifest=document.getElementById('manifest-filter').value;const access=document.getElementById('access-filter').value;const x402=document.getElementById('x402-filter').checked;let visible=0;document.querySelectorAll('tbody tr').forEach(r=>{const ok=(!q||r.dataset.search.includes(q))&&(!status||r.dataset.status===status)&&(!manifest||r.dataset.manifest===manifest)&&(!access||r.dataset.access===access)&&(!x402||r.dataset.x402==='true');r.style.display=ok?'':'none';if(ok)visible++});document.getElementById('visible-count').textContent=visible+' visible tools'}filterRows()</script>"#;
 
 const STYLE: &str = r#"<style>:root{color-scheme:dark;--bg:#080a0f;--panel:#101520;--line:#1f2b3d;--text:#e5edf7;--muted:#8da0b8;--hot:#85ffd1;--blue:#8ab4ff;--warn:#ffd180;--bad:#ff8a9a}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top left,#172033,#080a0f 48%);color:var(--text);font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}main{width:min(1180px,92vw);margin:0 auto;padding:28px 0 56px}.hero{padding:38px 0}.detail{padding-bottom:18px}.eyebrow{color:var(--hot);letter-spacing:.08em;text-transform:uppercase}h1{font-size:clamp(34px,8vw,72px);line-height:.95;margin:10px 0 18px;max-width:920px}h2{margin:0 0 12px}.hero p{max-width:780px;color:var(--muted);font-size:16px}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:22px}button,.actions a,.back{background:var(--hot);border:0;color:#06110d;padding:10px 14px;border-radius:999px;font-weight:700;text-decoration:none;cursor:pointer}.actions a,.back{background:#172235;color:var(--text);border:1px solid var(--line)}.sync-result{margin-top:14px;color:var(--hot)}.stats{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin:8px 0 18px}.stats div,.meta,.tools,.detail-grid article,.raw{background:rgba(16,21,32,.78);border:1px solid var(--line);border-radius:18px}.stats div{padding:16px}.stats strong{display:block;font-size:28px}.stats span,.count{color:var(--muted)}.meta{display:flex;gap:24px;flex-wrap:wrap;padding:14px 16px;color:var(--muted)}.tools,.raw{margin-top:18px;overflow:hidden}.filters{display:grid;grid-template-columns:2fr repeat(3,1fr) auto;gap:10px;padding:12px;border-bottom:1px solid var(--line)}input,select{width:100%;background:#0b0f17;border:1px solid var(--line);border-radius:12px;padding:11px;color:var(--text);font:inherit}label{display:flex;align-items:center;gap:8px;color:var(--muted);white-space:nowrap}.count{padding:0 14px}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em}td small{display:block;color:var(--muted);max-width:420px;overflow-wrap:anywhere}.badge{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:3px 8px;margin:2px;color:var(--blue);font-size:12px}.active,.verified,.open{color:var(--hot)}.deregistered,.hash_mismatch,.predicate{color:var(--warn)}.read_error,.fetch_error{color:var(--bad)}.x402{color:#c7a5ff}a{color:var(--hot)}.detail-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.detail-grid article{padding:18px;overflow-wrap:anywhere}code,pre{background:#070a10;border:1px solid var(--line);border-radius:12px}code{padding:2px 5px}pre{padding:16px;overflow:auto;max-height:560px}.raw h2{padding:16px 16px 0}@media(max-width:920px){.stats,.detail-grid{grid-template-columns:repeat(2,1fr)}.filters{grid-template-columns:1fr 1fr}}@media(max-width:720px){.stats,.detail-grid,.filters{grid-template-columns:1fr}table,thead,tbody,tr,td{display:block}thead{display:none}tr{padding:10px;border-bottom:1px solid var(--line)}td{border:0;padding:6px 12px}}</style>"#;
