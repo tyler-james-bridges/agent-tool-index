@@ -39,7 +39,10 @@
   color-scheme:light;
   font-synthesis:weight;
 }
-[data-theme="ink"]{
+/* Ink theme, also forced whenever the Agent lens is on: the whole page flips
+   from paper to a dark terminal readout so the lens change is unmistakable. */
+[data-theme="ink"],
+html[data-lens="agent"]{
   --paper:#14130e;
   --paper-2:#0e0d09;
   --card:#1b1913;
@@ -73,6 +76,7 @@ body{
   font-family:"Archivo", ui-sans-serif, system-ui, sans-serif;
   font-size:16px;line-height:1.55;
   -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+  transition:background-color .25s ease,color .25s ease;
 }
 ::selection{background:color-mix(in oklab,var(--accent) 26%, transparent);}
 *::-webkit-scrollbar{width:11px;height:11px;}
@@ -145,7 +149,6 @@ a{color:var(--accent-ink);text-underline-offset:3px;text-decoration-color:var(--
 .lensswitch button .ico{width:15px;height:15px;display:block;}
 .lensglide{position:absolute;top:3px;bottom:3px;border-radius:0;background:var(--ink);
   transition:left .26s cubic-bezier(.5,1.4,.5,1),width .26s cubic-bezier(.5,1.4,.5,1);z-index:1;}
-[data-lens="agent"] .masthead{border-top-color:var(--code-bg);}
 [data-lens="agent"] .lensswitch{border-color:var(--accent);background:color-mix(in oklab,var(--code-bg) 84%,var(--card));}
 [data-lens="agent"] .lensglide{background:var(--accent);}
 [data-lens="agent"] .lensswitch button{color:color-mix(in oklab,var(--code-ink) 76%,var(--muted));}

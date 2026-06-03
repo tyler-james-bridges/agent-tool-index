@@ -97,6 +97,8 @@ function App() {
   }, []);
 
   useE(() => { document.documentElement.setAttribute("data-theme", tw.theme); }, [tw.theme]);
+  // Agent lens flips the whole document to the terminal palette (see index.html vars).
+  useE(() => { document.documentElement.setAttribute("data-lens", lens); }, [lens]);
   useE(() => { document.documentElement.style.setProperty("--accent-raw", tw.accent); }, [tw.accent]);
   useE(() => { setLens(tw.startLens); }, [tw.startLens]);
 
