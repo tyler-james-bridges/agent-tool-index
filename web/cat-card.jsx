@@ -176,8 +176,8 @@ function CapabilityCard({ t, ctx, open, onToggle, onTag }) {
             <HumanLens t={t} ctx={ctx} push={push} />
 
             <div className="cfoot">
-              <button className="cact primary" disabled={plan.status === "blocked"} onClick={(e) => { e.stopPropagation(); push(plan.status === "conditional" ? "Resolve conditions, then call" : "Invocation ready"); }}>
-                {Ico.bolt}{plan.status === "blocked" ? "Cannot call" : plan.status === "conditional" ? "Call with conditions" : "Call now"}
+              <button className="cact primary" disabled={plan.status === "blocked"} onClick={(e) => { e.stopPropagation(); copyText(invokeSnippet(t)); push("Copied invocation for " + t.name); }}>
+                {Ico.bolt}{plan.status === "blocked" ? "Cannot call" : "Copy invocation"}
               </button>
               <button className="cact" onClick={copyRecord}>
                 {Ico.copy}Copy record
