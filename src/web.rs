@@ -12,10 +12,10 @@ use serde_json::{Value, json};
 use tokio::sync::RwLock;
 
 use crate::cache::save_snapshot;
-use crate::events::{apply_event_history, backfill_events};
-use crate::indexer::{access_label, sync_registry};
+use crate::events::{apply_event_history, apply_event_history_multi_chain, backfill_all_events, backfill_events_legacy};
+use crate::indexer::{access_label, sync_all_chains, sync_registry_legacy};
 use crate::storage::{event_count, save_events_db, save_snapshot_db};
-use crate::types::{ManifestStatus, Snapshot, ToolRecord, ToolStatus};
+use crate::types::{CHAINS, ManifestStatus, Snapshot, ToolRecord, ToolStatus};
 
 const INDEX_HTML: &str = include_str!("../web/index.html");
 const TWEAKS_PANEL_JSX: &str = include_str!("../web/tweaks-panel.jsx");
@@ -198,50 +198,90 @@ async fn api_resolve(
 async fn api_stats(State(state): State<AppState>) -> Json<Value> {
     let snapshot = state.snapshot.read().await;
     let events = event_count(&state.db_path).unwrap_or(0);
+    let chains_summary = snapshot.chains_summary();
     Json(json!({
         "chainId": snapshot.chain_id,
         "registry": snapshot.registry,
         "toolCount": snapshot.tool_count,
         "syncedAt": snapshot.synced_at,
         "storedEvents": events,
+        "chains": chains_summary,
         "stats": snapshot.stats(),
     }))
 }
 
 async fn api_sync(State(state): State<AppState>) -> Response {
-    match sync_registry(&state.rpc_url).await {
-        Ok(mut snapshot) => {
-            let events = backfill_events().await.unwrap_or_default();
-            if let Err(err) = apply_event_history(&mut snapshot, &events).await {
-                return (StatusCode::BAD_GATEWAY, err.to_string()).into_response();
+    // Check if we should use legacy single-chain sync or multi-chain sync
+    if state.rpc_url != crate::types::DEFAULT_RPC_URL {
+        // Legacy mode: use provided RPC URL
+        match sync_registry_legacy(&state.rpc_url).await {
+            Ok(mut snapshot) => {
+                let events = backfill_events_legacy().await.unwrap_or_default();
+                if let Err(err) = apply_event_history(&mut snapshot, &events).await {
+                    return (StatusCode::BAD_GATEWAY, err.to_string()).into_response();
+                }
+                if let Err(err) = save_snapshot(&state.cache_path, &snapshot) {
+                    return (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response();
+                }
+                if let Err(err) = save_snapshot_db(&state.db_path, &snapshot) {
+                    return (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response();
+                }
+                if let Err(err) = save_events_db(&state.db_path, &events) {
+                    return (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response();
+                }
+                let stats = snapshot.stats();
+                let events = event_count(&state.db_path).unwrap_or(0);
+                *state.snapshot.write().await = snapshot;
+                Html(format!(
+                    "<strong>Synced.</strong> {} active, {} deregistered, {} verified manifests, {} stored events.<script>setTimeout(()=>location.reload(),700)</script>",
+                    stats.active, stats.deregistered, stats.verified_manifests, events
+                ))
+                .into_response()
             }
-            if let Err(err) = save_snapshot(&state.cache_path, &snapshot) {
-                return (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response();
-            }
-            if let Err(err) = save_snapshot_db(&state.db_path, &snapshot) {
-                return (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response();
-            }
-            if let Err(err) = save_events_db(&state.db_path, &events) {
-                return (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response();
-            }
-            let stats = snapshot.stats();
-            let events = event_count(&state.db_path).unwrap_or(0);
-            *state.snapshot.write().await = snapshot;
-            Html(format!(
-                "<strong>Synced.</strong> {} active, {} deregistered, {} verified manifests, {} stored events.<script>setTimeout(()=>location.reload(),700)</script>",
-                stats.active, stats.deregistered, stats.verified_manifests, events
-            ))
-            .into_response()
+            Err(err) => (StatusCode::BAD_GATEWAY, err.to_string()).into_response(),
         }
-        Err(err) => (StatusCode::BAD_GATEWAY, err.to_string()).into_response(),
+    } else {
+        // Multi-chain mode
+        match sync_all_chains().await {
+            Ok(mut multi_snapshot) => {
+                let events = backfill_all_events().await.unwrap_or_default();
+                if let Err(err) = apply_event_history_multi_chain(&mut multi_snapshot, &events).await {
+                    return (StatusCode::BAD_GATEWAY, err.to_string()).into_response();
+                }
+                let snapshot: Snapshot = multi_snapshot.into();
+                if let Err(err) = save_snapshot(&state.cache_path, &snapshot) {
+                    return (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response();
+                }
+                if let Err(err) = save_snapshot_db(&state.db_path, &snapshot) {
+                    return (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response();
+                }
+                if let Err(err) = save_events_db(&state.db_path, &events) {
+                    return (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response();
+                }
+                let stats = snapshot.stats();
+                let chains_summary = snapshot.chains_summary();
+                let events = event_count(&state.db_path).unwrap_or(0);
+                let snapshot_clone = snapshot.clone();
+                *state.snapshot.write().await = snapshot_clone;
+                Html(format!(
+                    "<strong>Synced.</strong> {} tools from {} chains: {} active, {} deregistered, {} verified manifests, {} stored events.<script>setTimeout(()=>location.reload(),700)</script>",
+                    stats.total_ids, chains_summary.len(), stats.active, stats.deregistered, stats.verified_manifests, events
+                ))
+                .into_response()
+            }
+            Err(err) => (StatusCode::BAD_GATEWAY, err.to_string()).into_response(),
+        }
     }
 }
 
 async fn llms_txt(State(state): State<AppState>) -> Response {
     let snapshot = state.snapshot.read().await;
+    let chains_line = snapshot.chains_summary().iter()
+        .map(|(cid, name, count)| format!("{} ({}, {} tools)", name, cid, count))
+        .collect::<Vec<_>>().join(", ");
     let body = format!(
-        "# Agent Tool Index\n\nVisual and agent-readable index for ERC-8257 tools on Base.\n\n## Registry\n\n- Chain ID: {}\n- Registry address: {}\n- Synced at: {}\n- Tool count: {}\n\n## API\n\n- GET /api/tools - list all indexed tools\n- GET /api/tools/{{tool_id}} - single tool record\n- POST /api/tools/{{tool_id}}/can_call - plan whether a caller can invoke a tool\n- POST /api/resolve - resolve intent/filter criteria to candidate tools\n- GET /api/stats - index statistics\n- GET /openapi.json - OpenAPI 3.1 schema\n\n## Tool Records\n\nEach tool record includes: status, creator, metadata URI, access predicate, manifest\nverification status (JCS keccak256 hash), x402 detection, endpoint, tags, inputs,\noutputs, pricing, and checked_at timestamps.\n\n## Resolve\n\nPOST /api/resolve accepts: query, status, access, manifest_status, x402, limit.\nReturns scored candidates with invocation hints.\n\n## Call Planning\n\nPOST /api/tools/{{tool_id}}/can_call accepts: wallet, budget_usdc, allow_x402, has_auth.\nReturns callable/conditional/not_callable with requirements, blockers, and steps.\n",
-        snapshot.chain_id, snapshot.registry, snapshot.synced_at, snapshot.tool_count
+        "# Agent Tool Index\n\nVisual and agent-readable index for ERC-8257 tools across Ethereum, Base, and Abstract.\n\n## Registry\n\n- Registry address: {} (same on all chains)\n- Chains: {}\n- Synced at: {}\n- Tool count: {}\n\n## API\n\n- GET /api/tools - list all indexed tools\n- GET /api/tools/{{tool_id}} - single tool record\n- POST /api/tools/{{tool_id}}/can_call - plan whether a caller can invoke a tool\n- POST /api/resolve - resolve intent/filter criteria to candidate tools\n- GET /api/stats - index statistics\n- GET /openapi.json - OpenAPI 3.1 schema\n\n## Tool Records\n\nEach tool record includes: chain_id, chain_name, status, creator, metadata URI, access predicate,\npredicate_type, manifest verification status (JCS keccak256 hash), x402 detection, endpoint,\ntags, inputs, outputs, pricing, and checked_at timestamps.\n\n## Resolve\n\nPOST /api/resolve accepts: query, status, access, manifest_status, x402, limit.\nReturns scored candidates with invocation hints.\n\n## Call Planning\n\nPOST /api/tools/{{tool_id}}/can_call accepts: wallet, budget_usdc, allow_x402, has_auth.\nReturns callable/conditional/not_callable with requirements, blockers, and steps.\n",
+        snapshot.registry, chains_line, snapshot.synced_at, snapshot.tool_count
     );
     let mut headers = HeaderMap::new();
     headers.insert(
@@ -386,18 +426,28 @@ fn openapi_schemas() -> Value {
 }
 
 fn frontend_registry(snapshot: &Snapshot) -> Value {
+    let chains_summary: Vec<Value> = snapshot.chains_summary().iter().map(|(cid, name, count)| {
+        json!({ "chain_id": cid, "name": name, "tool_count": count })
+    }).collect();
     json!({
         "chain_id": snapshot.chain_id,
         "registry": snapshot.registry,
         "tool_count": snapshot.tool_count,
         "synced_at": snapshot.synced_at,
+        "chains": chains_summary,
         "tools": snapshot.tools.iter().map(frontend_tool).collect::<Vec<_>>(),
     })
+}
+
+fn chain_name_for(chain_id: u64) -> &'static str {
+    CHAINS.iter().find(|c| c.chain_id == chain_id).map(|c| c.name).unwrap_or("Unknown")
 }
 
 fn frontend_tool(tool: &ToolRecord) -> Value {
     json!({
         "id": tool.tool_id,
+        "chain_id": tool.chain_id,
+        "chain_name": chain_name_for(tool.chain_id),
         "status": status_text(tool),
         "name": frontend_tool_name(tool),
         "description": tool.description.as_deref().unwrap_or("No description published in the manifest."),
@@ -409,6 +459,7 @@ fn frontend_tool(tool: &ToolRecord) -> Value {
         "manifest_status": manifest_text(tool),
         "access": frontend_access_label(tool),
         "access_predicate": tool.access_predicate,
+        "predicate_type": &tool.predicate_type,
         "access_reqs": access_requirements(tool),
         "has_x402": tool.has_x402,
         "has_auth": tool.has_auth,
@@ -760,6 +811,7 @@ fn fallback_tool_record(tool: &Value) -> Result<ToolRecord> {
         metadata_uri: string_field(tool, "metadata_uri"),
         manifest_hash: string_field(tool, "manifest_hash"),
         access_predicate: string_field(tool, "access_predicate"),
+        predicate_type: string_field(tool, "predicate_type").unwrap_or("unknown".to_string()),
         manifest_status: parse_manifest_status(tool.get("manifest_status").and_then(Value::as_str)),
         computed_manifest_hash: string_field(tool, "computed_hash"),
         name: string_field(tool, "name"),

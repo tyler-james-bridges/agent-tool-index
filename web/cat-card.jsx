@@ -81,7 +81,7 @@ function HumanLens({ t, ctx, push }) {
         <div className="db">
           <p className="dprose" style={{ fontSize: 15 }}>
             <span className="mono" style={{ fontSize: 14 }}>{creator}</span>
-            {" · ERC-8257 " + (t.erc || "draft")}
+            {" · ERC-8257 on " + chainName(t.chain_id || 8453)}
             {" · checked " + relTime(t.checked_at) + " ago"}
           </p>
         </div>
@@ -152,6 +152,7 @@ function CapabilityCard({ t, ctx, open, onToggle, onTag }) {
           <span className="nm">
             <span className={dereg ? "strike" : ""}>{t.name}</span>
             <span className="idx">#{String(t.id).padStart(2, "0")}</span>
+            <span className="chain-badge" data-chain={t.chain_id}>{chainName(t.chain_id || 8453)}</span>
           </span>
           <span className="sum">{cardSummary(t, plan)}</span>
           <Glance t={t} onTag={onTag} />
@@ -213,6 +214,7 @@ function AgentRow({ t, ctx, open, onToggle }) {
     <div className="arowwrap" data-open={open} data-tool-id={t.id}>
       <button className="arow" onClick={onToggle} aria-expanded={open}>
         <span className="aid">{String(t.id).padStart(2, "0")}</span>
+        <span className="achain">{chainName(t.chain_id || 8453)}</span>
         <span className="aname" data-dereg={t.status === "deregistered"}>{t.name}</span>
         <span className={"averdict " + plan.status}>{plan.status}</span>
         <span className="aprice">{price}</span>
@@ -232,7 +234,7 @@ function AgentTable({ tools, ctx, openId, onToggle }) {
         <span className="acount">{tools.length} records</span>
       </div>
       <div className="acols">
-        <span>id</span><span>name</span><span>verdict</span><span>usdc</span><span>flags</span>
+        <span>id</span><span>chain</span><span>name</span><span>verdict</span><span>usdc</span><span>flags</span>
       </div>
       {tools.length === 0 ? (
         <div className="anone">0 records match the current query and filters</div>

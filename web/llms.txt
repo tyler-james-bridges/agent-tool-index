@@ -1,11 +1,11 @@
 # Agent Tool Index
 
-Visual and agent-readable index for ERC-8257 tools on Base.
+Visual and agent-readable index for ERC-8257 tools across Ethereum, Base, and Abstract.
 
 ## Registry
 
-- Chain ID: 8453
-- Registry address: 0x265BB2DBFC0A8165C9A1941Eb1372F349baD2cf1
+- Registry address: 0x265BB2DBFC0A8165C9A1941Eb1372F349baD2cf1 (same on all chains)
+- Chains: Ethereum (1), Base (8453), Abstract (2741)
 
 ## Static Files
 

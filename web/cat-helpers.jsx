@@ -40,7 +40,7 @@ function humanChecklist(t, ctx) {
   if (t.status !== "active") {
     items.push({ state: "block", text: <>This capability was <b>deregistered</b> from the index and can no longer be called.</> });
   } else {
-    items.push({ state: "met", text: <>Active in the registry on Base.</> });
+    items.push({ state: "met", text: <>Active in the registry on {chainName(t.chain_id || 8453)}.</> });
   }
 
   // manifest integrity
@@ -94,13 +94,15 @@ const VERDICT_COPY = {
 /* ---------- agent-payload builders (legible JSON) ---------- */
 function resolveRecord(t) {
   return {
-    chain_id: REG.chain_id,
+    chain_id: t.chain_id || REG.chain_id,
+    chain_name: chainName(t.chain_id || REG.chain_id),
     registry: REG.registry,
     tool_id: t.id,
     name: t.name,
     endpoint: t.endpoint,
     method: "POST",
     access: t.access,
+    predicate_type: t.predicate_type || "unknown",
     requires_auth: t.has_auth,
     settlement: t.has_x402 ? "x402" : "none",
     price_usdc: t.price_usdc,

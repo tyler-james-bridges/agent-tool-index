@@ -3,11 +3,9 @@ use serde_json::Value;
 
 use crate::indexer::enrich_tool_record;
 use crate::types::{
-    BASE_CHAIN_ID, BASE_REGISTRY, ManifestStatus, RegistryEventKind, RegistryEventRecord, Snapshot,
+    ChainConfig, CHAINS, ManifestStatus, MultiChainSnapshot, RegistryEventKind, RegistryEventRecord, Snapshot,
 };
 
-const BLOCKSCOUT_LOGS: &str =
-    "https://base.blockscout.com/api/v2/addresses/0x265BB2DBFC0A8165C9A1941Eb1372F349baD2cf1/logs";
 const TOOL_REGISTERED: &str = "0xe7be7fd3c802f61682f56ba817276b1cc81fbee7cb50705c8ed7952811dac397";
 const TOOL_DEREGISTERED: &str =
     "0x9add33e854e243f868ff7cacac076d65b1d56fb593e2bb891e76e2e8d5ddd034";
@@ -16,22 +14,28 @@ const TOOL_METADATA_UPDATED: &str =
 const ACCESS_PREDICATE_UPDATED: &str =
     "0x53e2d3a37877f4a367d09cdba706178d3c6414a15d642294300c65a8037dd6ff";
 
-pub async fn backfill_events() -> Result<Vec<RegistryEventRecord>> {
+pub async fn backfill_events(chain_config: &ChainConfig) -> Result<Vec<RegistryEventRecord>> {
     let http = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(20))
         .build()?;
     let mut query: Vec<(String, String)> = Vec::new();
     let mut events = Vec::new();
+    
+    let blockscout_logs = format!(
+        "{}/api/v2/addresses/{}/logs", 
+        chain_config.blockscout_url, 
+        chain_config.registry
+    );
 
     for _ in 0..20 {
-        let response = http.get(BLOCKSCOUT_LOGS).query(&query).send().await?;
+        let response = http.get(&blockscout_logs).query(&query).send().await?;
         if !response.status().is_success() {
             anyhow::bail!("Blockscout logs returned HTTP {}", response.status());
         }
         let page: Value = response.json().await?;
         if let Some(items) = page.get("items").and_then(Value::as_array) {
             for item in items {
-                if let Some(event) = decode_log(item.clone()) {
+                if let Some(event) = decode_log(item.clone(), chain_config) {
                     events.push(event);
                 }
             }
@@ -52,6 +56,30 @@ pub async fn backfill_events() -> Result<Vec<RegistryEventRecord>> {
     Ok(events)
 }
 
+pub async fn backfill_all_events() -> Result<Vec<RegistryEventRecord>> {
+    let mut all_events = Vec::new();
+    
+    for chain_config in CHAINS {
+        match backfill_events(chain_config).await {
+            Ok(events) => {
+                all_events.extend(events);
+            }
+            Err(err) => {
+                eprintln!("Failed to backfill events for chain {}: {}", chain_config.name, err);
+            }
+        }
+    }
+    
+    all_events.sort_by_key(|event| (event.chain_id, event.block_number, event.log_index));
+    Ok(all_events)
+}
+
+// Backward compatibility wrapper
+pub async fn backfill_events_legacy() -> Result<Vec<RegistryEventRecord>> {
+    // Use Base chain config for backward compatibility
+    backfill_events(&CHAINS[1]).await
+}
+
 pub async fn apply_event_history(
     snapshot: &mut Snapshot,
     events: &[RegistryEventRecord],
@@ -66,7 +94,7 @@ pub async fn apply_event_history(
         let mut access_predicate = None;
         for event in events
             .iter()
-            .filter(|event| event.tool_id == Some(tool.tool_id))
+            .filter(|event| event.chain_id == tool.chain_id && event.tool_id == Some(tool.tool_id))
         {
             if let Some(value) = &event.creator {
                 creator = Some(value.clone());
@@ -102,7 +130,57 @@ pub async fn apply_event_history(
     Ok(())
 }
 
-fn decode_log(raw: Value) -> Option<RegistryEventRecord> {
+pub async fn apply_event_history_multi_chain(
+    snapshot: &mut MultiChainSnapshot,
+    events: &[RegistryEventRecord],
+) -> Result<()> {
+    let http = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(12))
+        .build()?;
+    for tool in &mut snapshot.tools {
+        let mut creator = None;
+        let mut metadata_uri = None;
+        let mut manifest_hash = None;
+        let mut access_predicate = None;
+        for event in events
+            .iter()
+            .filter(|event| event.chain_id == tool.chain_id && event.tool_id == Some(tool.tool_id))
+        {
+            if let Some(value) = &event.creator {
+                creator = Some(value.clone());
+            }
+            if let Some(value) = &event.metadata_uri {
+                metadata_uri = Some(value.clone());
+            }
+            if let Some(value) = &event.manifest_hash {
+                manifest_hash = Some(value.clone());
+            }
+            if let Some(value) = &event.access_predicate {
+                access_predicate = Some(value.clone());
+            }
+        }
+
+        if tool.creator.is_none() {
+            tool.creator = creator;
+        }
+        if tool.metadata_uri.is_none() {
+            tool.metadata_uri = metadata_uri;
+        }
+        if tool.manifest_hash.is_none() {
+            tool.manifest_hash = manifest_hash;
+        }
+        if tool.access_predicate.is_none() {
+            tool.access_predicate = access_predicate;
+        }
+        if tool.metadata_uri.is_some() && matches!(tool.manifest_status, ManifestStatus::Unchecked)
+        {
+            enrich_tool_record(tool, &http).await?;
+        }
+    }
+    Ok(())
+}
+
+fn decode_log(raw: Value, chain_config: &ChainConfig) -> Option<RegistryEventRecord> {
     let topics = raw.get("topics")?.as_array()?.clone();
     let topic0 = topics.first()?.as_str()?.to_ascii_lowercase();
     let block_number = raw.get("block_number")?.as_u64()?;
@@ -119,8 +197,8 @@ fn decode_log(raw: Value) -> Option<RegistryEventRecord> {
         .map(str::to_string);
 
     let mut event = RegistryEventRecord {
-        chain_id: BASE_CHAIN_ID,
-        registry: BASE_REGISTRY.to_string(),
+        chain_id: chain_config.chain_id,
+        registry: chain_config.registry.to_string(),
         block_number,
         block_timestamp,
         tx_hash,

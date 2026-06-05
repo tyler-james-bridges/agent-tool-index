@@ -1,17 +1,18 @@
 # Agent Tool Index
 
-Agent-first visual index for [ERC-8257](https://github.com/ethereum/ERCs/pull/1723) tools on Base.
+Agent-first visual index for [ERC-8257](https://github.com/ethereum/ERCs/pull/1723) tools across Ethereum, Base, and Abstract.
 
 **Live:** [agenttoolindex.xyz](https://agenttoolindex.xyz)
 
-Syncs the onchain [ToolRegistry](https://github.com/ProjectOpenSea/tool-registry) (`0x265BB2...baD2cf1` on Base), fetches and verifies each tool manifest (JCS + keccak256), and exposes both a visual explorer and agent-readable API.
+Syncs the onchain [ToolRegistry](https://github.com/ProjectOpenSea/tool-registry) (`0x265BB2...baD2cf1`) across Ethereum, Base, and Abstract (same CREATE2 address on all chains), fetches and verifies each tool manifest (JCS + keccak256), and exposes both a visual explorer and agent-readable API.
 
 ## Features
 
+- Multi-chain indexing (Ethereum, Base, Abstract)
 - Human and Agent lens views with light/dark themes
 - Manifest hash verification against onchain records
 - x402 payment detection and pricing extraction
-- Access predicate awareness (open vs gated)
+- Access predicate type detection (ERC-721, ERC-1155, subscription, trait-gated, ERC-20, composite)
 - Intent-based tool resolution (`/api/resolve`)
 - Agent call planner (`/api/tools/{id}/can_call`)
 - SQLite persistence with Blockscout event backfill
@@ -83,6 +84,8 @@ Returns `callable`, `conditional`, or `not_callable` with requirements, blockers
 | Variable | Default |
 |---|---|
 | `BASE_RPC_URL` | `https://mainnet.base.org` |
+| `ETH_RPC_URL` | `https://eth.llamarpc.com` |
+| `ABSTRACT_RPC_URL` | `https://api.mainnet.abs.xyz` |
 | `ERC8257_CACHE` | `data/tools.json` |
 | `ERC8257_DB` | `data/index.sqlite` |
 

@@ -7,10 +7,23 @@ use serde_json::Value;
 use tokio::time::{Duration, sleep};
 
 use crate::types::{
-    BASE_CHAIN_ID, BASE_REGISTRY, ManifestStatus, Snapshot, ToolRecord, ToolStatus,
+    ChainConfig, CHAINS, ManifestStatus, MultiChainSnapshot, Snapshot, ToolRecord, ToolStatus,
 };
 
 const ZERO_ADDRESS: &str = "0x0000000000000000000000000000000000000000";
+
+pub fn predicate_label(address: &str) -> &'static str {
+    let addr = address.to_ascii_lowercase();
+    match addr.as_str() {
+        "0x0000000000000000000000000000000000000000" => "open",
+        "0xc8721c9a776958fffeb602da1b708bf1d318379" => "erc721",
+        "0x77373dc3c1ae9a1e937ef3e5e08f4807d47c7c11" => "erc1155",
+        "0xcbe0cd9b1d99d95baa9c58f2767246c52e461f25" => "subscription",
+        "0x10abf07cfa34bf22372c57f27e8bd9c2dcf93fa1" => "trait_gated",
+        "0x1a834fc48b5f6e119c62c12a98b32137bcfa77cd" => "erc20_balance",
+        _ => if addr == "0x0000000000000000000000000000000000000000" { "open" } else { "custom" }
+    }
+}
 
 sol! {
     struct ToolConfig {
@@ -29,9 +42,9 @@ sol! {
     }
 }
 
-pub async fn sync_registry(rpc_url: &str) -> Result<Snapshot> {
-    let provider = ProviderBuilder::new().connect_http(rpc_url.parse()?);
-    let registry_addr: Address = BASE_REGISTRY.parse()?;
+pub async fn sync_registry(chain_config: &ChainConfig) -> Result<Snapshot> {
+    let provider = ProviderBuilder::new().connect_http(chain_config.rpc_url.parse()?);
+    let registry_addr: Address = chain_config.registry.parse()?;
     let registry = ToolRegistry::new(registry_addr, &provider);
     let count = registry.toolCount().call().await?.to::<u64>();
     let http = reqwest::Client::builder()
@@ -41,20 +54,50 @@ pub async fn sync_registry(rpc_url: &str) -> Result<Snapshot> {
     let mut tools = Vec::with_capacity(count as usize);
     for tool_id in 1..=count {
         let record = match read_config_with_retry(&registry, tool_id).await {
-            Ok(config) => build_active_record(tool_id, config, &http).await,
-            Err(err) => build_error_record(tool_id, err),
+            Ok(config) => build_active_record(tool_id, config, &http, chain_config).await,
+            Err(err) => build_error_record(tool_id, err, chain_config),
         };
         tools.push(record);
         sleep(Duration::from_millis(850)).await;
     }
 
     Ok(Snapshot {
-        chain_id: BASE_CHAIN_ID,
-        registry: BASE_REGISTRY.to_string(),
+        chain_id: chain_config.chain_id,
+        registry: chain_config.registry.to_string(),
         tool_count: count,
         synced_at: Utc::now(),
         tools,
     })
+}
+
+pub async fn sync_all_chains() -> Result<MultiChainSnapshot> {
+    let mut all_tools = Vec::new();
+    
+    for chain_config in CHAINS {
+        match sync_registry(chain_config).await {
+            Ok(snapshot) => {
+                all_tools.extend(snapshot.tools);
+            }
+            Err(err) => {
+                eprintln!("Failed to sync chain {}: {}", chain_config.name, err);
+            }
+        }
+    }
+    
+    Ok(MultiChainSnapshot {
+        synced_at: Utc::now(),
+        tools: all_tools,
+    })
+}
+
+// Backward compatibility wrapper
+pub async fn sync_registry_legacy(rpc_url: &str) -> Result<Snapshot> {
+    // Find matching chain config by RPC URL, default to Base
+    let chain_config = CHAINS.iter()
+        .find(|config| config.rpc_url == rpc_url)
+        .unwrap_or(&CHAINS[1]); // Base is index 1
+    
+    sync_registry(chain_config).await
 }
 
 async fn read_config_with_retry<P>(
@@ -84,18 +127,23 @@ async fn build_active_record(
     tool_id: u64,
     config: ToolConfig,
     http: &reqwest::Client,
+    chain_config: &ChainConfig,
 ) -> ToolRecord {
     let metadata_uri = config.metadataURI.clone();
     let manifest_hash = format!("0x{}", hex::encode(config.manifestHash));
+    let access_predicate = format!("{:?}", config.accessPredicate);
+    let predicate_type = predicate_label(&access_predicate);
+    
     let mut record = ToolRecord {
-        chain_id: BASE_CHAIN_ID,
-        registry: BASE_REGISTRY.to_string(),
+        chain_id: chain_config.chain_id,
+        registry: chain_config.registry.to_string(),
         tool_id,
         status: ToolStatus::Active,
         creator: Some(format!("{:?}", config.creator)),
         metadata_uri: Some(metadata_uri.clone()),
         manifest_hash: Some(manifest_hash.clone()),
-        access_predicate: Some(format!("{:?}", config.accessPredicate)),
+        access_predicate: Some(access_predicate),
+        predicate_type: predicate_type.to_string(),
         manifest_status: ManifestStatus::Unchecked,
         computed_manifest_hash: None,
         name: None,
@@ -116,7 +164,7 @@ async fn build_active_record(
     record
 }
 
-fn build_error_record(tool_id: u64, error: String) -> ToolRecord {
+fn build_error_record(tool_id: u64, error: String, chain_config: &ChainConfig) -> ToolRecord {
     let status = if error.contains("ToolIsDeregistered") || error.contains("0x0bf47976") {
         ToolStatus::Deregistered
     } else {
@@ -124,14 +172,15 @@ fn build_error_record(tool_id: u64, error: String) -> ToolRecord {
     };
 
     ToolRecord {
-        chain_id: BASE_CHAIN_ID,
-        registry: BASE_REGISTRY.to_string(),
+        chain_id: chain_config.chain_id,
+        registry: chain_config.registry.to_string(),
         tool_id,
         status,
         creator: None,
         metadata_uri: None,
         manifest_hash: None,
         access_predicate: None,
+        predicate_type: "unknown".to_string(),
         manifest_status: ManifestStatus::Unchecked,
         computed_manifest_hash: None,
         name: None,
@@ -216,8 +265,7 @@ fn value_contains(value: &Value, needle: &str) -> bool {
 
 pub fn access_label(record: &ToolRecord) -> &'static str {
     match record.access_predicate.as_deref() {
-        Some(ZERO_ADDRESS) => "open",
-        Some(_) => "predicate",
+        Some(addr) => predicate_label(addr),
         None => "unknown",
     }
 }

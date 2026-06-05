@@ -4,6 +4,9 @@ const { useState, useEffect, useRef, useCallback, createContext, useContext, use
 const REG = window.REGISTRY;
 const ZERO = "0x0000000000000000000000000000000000000000";
 
+const CHAIN_NAMES = {1: "Ethereum", 8453: "Base", 2741: "Abstract"};
+function chainName(id) { return CHAIN_NAMES[id] || "Chain " + id; }
+
 /* ---- tiny svg set (used sparingly; UI is glyph-forward) ---- */
 const Svg = {
   copy: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="11" height="11"/><path d="M5 15V5h10"/></svg>,
@@ -71,8 +74,10 @@ function buildCurl(t) {
 }
 function buildResolveJSON(t) {
   return JSON.stringify({
-    chain_id: REG.chain_id, registry: REG.registry, tool_id: t.id, name: t.name, endpoint: t.endpoint,
-    method: "POST", access: t.access, requires_x402: t.has_x402, requires_auth: t.has_auth,
+    chain_id: t.chain_id || REG.chain_id, chain_name: chainName(t.chain_id || REG.chain_id),
+    registry: REG.registry, tool_id: t.id, name: t.name, endpoint: t.endpoint,
+    method: "POST", access: t.access, predicate_type: t.predicate_type || "unknown",
+    requires_x402: t.has_x402, requires_auth: t.has_auth,
     price_usdc: t.price_usdc, manifest_verified: t.manifest_status === "verified",
   }, null, 2);
 }
@@ -160,4 +165,5 @@ function copyText(text) {
 Object.assign(window, {
   Svg, VG, short, fmtPrice, relTime, accessOf, signature, planCall, buildCurl, buildResolveJSON,
   parseQuery, matchQuery, toggleToken, removeRaw, hljson, ToastProvider, useToast, copyText, REG,
+  CHAIN_NAMES, chainName,
 });

@@ -16,15 +16,21 @@ function initialTheme() {
 }
 
 const STAT = (() => {
-  const s = { total: REG.tools.length, active: 0, dereg: 0, verified: 0, mismatch: 0, x402: 0, free: 0, gated: 0 };
+  const s = { total: REG.tools.length, active: 0, dereg: 0, verified: 0, mismatch: 0, x402: 0, free: 0, gated: 0, chains: {} };
   REG.tools.forEach((t) => {
     if (t.status === "active") s.active++; else s.dereg++;
     if (t.manifest_status === "verified") s.verified++; else s.mismatch++;
     if (t.has_x402) s.x402++; else s.free++;
     if (t.access === "gated") s.gated++;
+    const cid = t.chain_id || 8453;
+    s.chains[cid] = (s.chains[cid] || 0) + 1;
   });
   return s;
 })();
+
+const CHAIN_PILLS = Object.keys(STAT.chains).map(Number).sort().map((cid) => ({
+  key: "chain:" + cid, chain_id: cid, lab: chainName(cid), count: STAT.chains[cid],
+}));
 
 const PILLS = [
   { key: "free",                 lab: "Free",          tone: "ok",     count: STAT.free },
@@ -86,6 +92,7 @@ function App() {
   const [lens, setLens] = useS(TWEAK_DEFAULTS.startLens);
   const [callableOnly, setCallableOnly] = useS(false);
   const [sort, setSort] = useS({ field: "id", dir: "asc" });
+  const [chain, setChain] = useS(null);              // null = all chains
   const [domain, setDomain] = useS(null);            // null = browse all domains
   const [openId, setOpenId] = useS(() => {
     const m = location.pathname.match(/^\/tools\/(\d+)$/);
@@ -119,6 +126,7 @@ function App() {
   const domCounts = useM(() => domainCounts(REG.tools), []);
   const filtered = useM(() => {
     let list = REG.tools.filter((t) => matchQuery(t, parsed));
+    if (chain) list = list.filter((t) => (t.chain_id || 8453) === chain);
     if (callableOnly) list = list.filter((t) => planCall(t, ctx).status !== "blocked");
     if (domain) list = list.filter((t) => domainOf(t) === domain);
     const dir = sort.dir === "asc" ? 1 : -1;
@@ -129,7 +137,7 @@ function App() {
       return (a.id - b.id) * dir;
     });
     return list;
-  }, [parsed, callableOnly, sort, ctx, domain]);
+  }, [parsed, callableOnly, sort, ctx, domain, chain]);
 
   // Browse mode: nothing narrowed shows domain "shelves" instead of one long list.
   const browseMode = !q.trim() && !callableOnly && !domain;
@@ -148,7 +156,7 @@ function App() {
       return next;
     });
   }
-  function resetAll() { setQ(""); setCallableOnly(false); setDomain(null); }
+  function resetAll() { setQ(""); setCallableOnly(false); setDomain(null); setChain(null); }
   function pickDomain(k) { setDomain(k); setQ(""); setCallableOnly(false); window.scrollTo({ top: 0 }); }
   function cycleSort() {
     const order = ["id", "verdict", "price"];
@@ -212,6 +220,12 @@ function App() {
                 </button>
               );
             })}
+            {CHAIN_PILLS.length > 1 && CHAIN_PILLS.map((cp) => (
+              <button className="pill" data-on={chain === cp.chain_id} key={cp.key}
+                onClick={() => setChain(chain === cp.chain_id ? null : cp.chain_id)}>
+                {cp.lab} <span className="ct">{cp.count}</span>
+              </button>
+            ))}
           </div>
           <div className="fstrip-r">
             <span className="count"><b>{filtered.length}</b> of {STAT.total}</span>
@@ -268,7 +282,7 @@ function App() {
 
         <footer className="pagefoot">
           <span className="mono">{short(REG.registry, 6)}</span>
-          <span>Base · 8453</span>
+          <span>{(REG.chains || []).map((c) => c.name || chainName(c.chain_id)).join(" \u00b7 ") || "Base \u00b7 8453"}</span>
           <span>{STAT.active} active · {STAT.verified} verified · synced {relTime(REG.synced_at)} ago</span>
           <a href="/llms.txt">llms.txt</a>
           <span style={{ marginLeft: "auto" }}>Read this index as a human, or as your agent does.</span>
