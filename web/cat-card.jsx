@@ -214,7 +214,6 @@ function AgentRow({ t, ctx, open, onToggle }) {
     <div className="arowwrap" data-open={open} data-tool-id={t.id}>
       <button className="arow" onClick={onToggle} aria-expanded={open}>
         <span className="aid">{String(t.id).padStart(2, "0")}</span>
-        <span className="achain">{chainName(t.chain_id || 8453)}</span>
         <span className="aname" data-dereg={t.status === "deregistered"}>{t.name}</span>
         <span className={"averdict " + plan.status}>{plan.status}</span>
         <span className="aprice">{price}</span>
@@ -234,7 +233,7 @@ function AgentTable({ tools, ctx, openId, onToggle }) {
         <span className="acount">{tools.length} records</span>
       </div>
       <div className="acols">
-        <span>id</span><span>chain</span><span>name</span><span>verdict</span><span>usdc</span><span>flags</span>
+        <span>id</span><span>name</span><span>verdict</span><span>usdc</span><span>flags</span>
       </div>
       {tools.length === 0 ? (
         <div className="anone">0 records match the current query and filters</div>
