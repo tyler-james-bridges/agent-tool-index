@@ -115,9 +115,10 @@ async fn cat_app_jsx() -> Response {
 
 async fn tool_page(Path(tool_id): Path<u64>, State(state): State<AppState>) -> Response {
     let snapshot = state.snapshot.read().await;
-    match snapshot.tools.iter().find(|tool| tool.tool_id == tool_id) {
-        Some(tool) => Html(render_detail(tool)).into_response(),
-        None => StatusCode::NOT_FOUND.into_response(),
+    if snapshot.tools.iter().any(|tool| tool.tool_id == tool_id) {
+        Html(INDEX_HTML).into_response()
+    } else {
+        StatusCode::NOT_FOUND.into_response()
     }
 }
 
@@ -239,8 +240,8 @@ async fn api_sync(State(state): State<AppState>) -> Response {
 async fn llms_txt(State(state): State<AppState>) -> Response {
     let snapshot = state.snapshot.read().await;
     let body = format!(
-        "# ERC-8257 Index\n\nThis service indexes ERC-8257 tools from Base ToolRegistry.\n\nRegistry: {}\nChain ID: {}\nSynced At: {}\n\nAgent endpoints:\n- GET /api/tools\n- GET /api/tools/{{tool_id}}\n- POST /api/tools/{{tool_id}}/can_call\n- POST /api/resolve\n- GET /api/stats\n- GET /openapi.json\n\nResolve accepts JSON fields: query, status, access, manifest_status, x402, limit. can_call accepts wallet, budget_usdc, allow_x402, has_auth. Tool records include status, creator, metadata URI, access predicate, manifest verification status, x402 detection, endpoint, tags, and raw manifest JSON when available.\n",
-        snapshot.registry, snapshot.chain_id, snapshot.synced_at
+        "# Agent Tool Index\n\nVisual and agent-readable index for ERC-8257 tools on Base.\n\n## Registry\n\n- Chain ID: {}\n- Registry address: {}\n- Synced at: {}\n- Tool count: {}\n\n## API\n\n- GET /api/tools - list all indexed tools\n- GET /api/tools/{{tool_id}} - single tool record\n- POST /api/tools/{{tool_id}}/can_call - plan whether a caller can invoke a tool\n- POST /api/resolve - resolve intent/filter criteria to candidate tools\n- GET /api/stats - index statistics\n- GET /openapi.json - OpenAPI 3.1 schema\n\n## Tool Records\n\nEach tool record includes: status, creator, metadata URI, access predicate, manifest\nverification status (JCS keccak256 hash), x402 detection, endpoint, tags, inputs,\noutputs, pricing, and checked_at timestamps.\n\n## Resolve\n\nPOST /api/resolve accepts: query, status, access, manifest_status, x402, limit.\nReturns scored candidates with invocation hints.\n\n## Call Planning\n\nPOST /api/tools/{{tool_id}}/can_call accepts: wallet, budget_usdc, allow_x402, has_auth.\nReturns callable/conditional/not_callable with requirements, blockers, and steps.\n",
+        snapshot.chain_id, snapshot.registry, snapshot.synced_at, snapshot.tool_count
     );
     let mut headers = HeaderMap::new();
     headers.insert(
@@ -859,42 +860,6 @@ pub async fn serve(addr: &str, state: AppState) -> Result<()> {
     Ok(())
 }
 
-fn render_detail(tool: &ToolRecord) -> String {
-    let title = tool.name.as_deref().unwrap_or("unknown tool");
-    let manifest_json = tool
-        .manifest
-        .as_ref()
-        .and_then(|manifest| serde_json::to_string_pretty(manifest).ok())
-        .unwrap_or_else(|| "null".to_string());
-    format!(
-        r##"<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Tool #{id} / ERC-8257 Index</title>{style}</head><body><main><a class="back" href="/">Back to index</a><section class="hero detail"><p class="eyebrow">Tool #{id}</p><h1>{title}</h1><p>{description}</p><div class="actions"><a href="/api/tools/{id}">JSON</a>{metadata_link}{endpoint_link}</div></section><section class="detail-grid"><article><h2>Registry</h2><p><b>Status</b> {status_badge}</p><p><b>Access</b> {access_badge}</p><p><b>Creator</b> {creator}</p><p><b>Registry</b> {registry}</p><p><b>Chain</b> {chain}</p></article><article><h2>Manifest</h2><p><b>Status</b> {manifest_badge}</p><p><b>Onchain hash</b> <code>{manifest_hash}</code></p><p><b>Computed hash</b> <code>{computed_hash}</code></p><p><b>Checked</b> {checked}</p></article><article><h2>Agent Invocation</h2><p>{invocation}</p><p><b>Planner</b> <code>POST /api/tools/{id}/can_call</code></p><p><b>Tags</b> {tags}</p><p><b>Error</b> {error}</p></article></section><section class="raw"><h2>Raw Manifest</h2><pre>{manifest}</pre></section></main></body></html>"##,
-        style = STYLE,
-        id = tool.tool_id,
-        title = html_escape::encode_text(title),
-        description = html_escape::encode_text(
-            tool.description
-                .as_deref()
-                .unwrap_or("No manifest description is available.")
-        ),
-        metadata_link = optional_link(tool.metadata_uri.as_deref(), "Metadata URI"),
-        endpoint_link = optional_link(tool.endpoint.as_deref(), "Endpoint"),
-        status_badge = badge(status_text(tool), status_text(tool)),
-        access_badge = badge(access_label(tool), access_label(tool)),
-        creator = html_escape::encode_text(tool.creator.as_deref().unwrap_or("unknown")),
-        registry = html_escape::encode_text(&tool.registry),
-        chain = tool.chain_id,
-        manifest_badge = badge(manifest_text(tool), manifest_text(tool)),
-        manifest_hash =
-            html_escape::encode_text(tool.manifest_hash.as_deref().unwrap_or("unknown")),
-        computed_hash =
-            html_escape::encode_text(tool.computed_manifest_hash.as_deref().unwrap_or("unknown")),
-        checked = tool.checked_at,
-        invocation = html_escape::encode_text(&invocation_hint(tool)),
-        tags = html_escape::encode_text(&tool.tags.join(", ")),
-        error = html_escape::encode_text(tool.error.as_deref().unwrap_or("none")),
-        manifest = html_escape::encode_text(&manifest_json),
-    )
-}
 
 fn resolve_matches(tool: &ToolRecord, request: &ResolveRequest) -> bool {
     if let Some(status) = request.status.as_deref() {
@@ -1082,23 +1047,4 @@ fn manifest_text(tool: &ToolRecord) -> &'static str {
     }
 }
 
-fn badge(label: &str, class_name: &str) -> String {
-    format!(
-        r#"<span class="badge {}">{}</span>"#,
-        html_escape::encode_double_quoted_attribute(class_name),
-        html_escape::encode_text(label)
-    )
-}
 
-fn optional_link(url: Option<&str>, label: &str) -> String {
-    url.map(|url| {
-        format!(
-            r#"<a href="{}">{}</a>"#,
-            html_escape::encode_double_quoted_attribute(url),
-            html_escape::encode_text(label)
-        )
-    })
-    .unwrap_or_default()
-}
-
-const STYLE: &str = r#"<style>:root{color-scheme:dark;--bg:#080a0f;--panel:#101520;--line:#1f2b3d;--text:#e5edf7;--muted:#8da0b8;--hot:#85ffd1;--blue:#8ab4ff;--warn:#ffd180;--bad:#ff8a9a}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top left,#172033,#080a0f 48%);color:var(--text);font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}main{width:min(1180px,92vw);margin:0 auto;padding:28px 0 56px}.hero{padding:38px 0}.detail{padding-bottom:18px}.eyebrow{color:var(--hot);letter-spacing:.08em;text-transform:uppercase}h1{font-size:clamp(34px,8vw,72px);line-height:.95;margin:10px 0 18px;max-width:920px}h2{margin:0 0 12px}.hero p{max-width:780px;color:var(--muted);font-size:16px}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:22px}button,.actions a,.back{background:var(--hot);border:0;color:#06110d;padding:10px 14px;border-radius:999px;font-weight:700;text-decoration:none;cursor:pointer}.actions a,.back{background:#172235;color:var(--text);border:1px solid var(--line)}.sync-result{margin-top:14px;color:var(--hot)}.stats{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin:8px 0 18px}.stats div,.meta,.tools,.detail-grid article,.raw{background:rgba(16,21,32,.78);border:1px solid var(--line);border-radius:18px}.stats div{padding:16px}.stats strong{display:block;font-size:28px}.stats span,.count{color:var(--muted)}.meta{display:flex;gap:24px;flex-wrap:wrap;padding:14px 16px;color:var(--muted)}.tools,.raw{margin-top:18px;overflow:hidden}.filters{display:grid;grid-template-columns:2fr repeat(3,1fr) auto;gap:10px;padding:12px;border-bottom:1px solid var(--line)}input,select{width:100%;background:#0b0f17;border:1px solid var(--line);border-radius:12px;padding:11px;color:var(--text);font:inherit}label{display:flex;align-items:center;gap:8px;color:var(--muted);white-space:nowrap}.count{padding:0 14px}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em}td small{display:block;color:var(--muted);max-width:420px;overflow-wrap:anywhere}.badge{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:3px 8px;margin:2px;color:var(--blue);font-size:12px}.active,.verified,.open{color:var(--hot)}.deregistered,.hash_mismatch,.predicate{color:var(--warn)}.read_error,.fetch_error{color:var(--bad)}.x402{color:#c7a5ff}a{color:var(--hot)}.detail-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.detail-grid article{padding:18px;overflow-wrap:anywhere}code,pre{background:#070a10;border:1px solid var(--line);border-radius:12px}code{padding:2px 5px}pre{padding:16px;overflow:auto;max-height:560px}.raw h2{padding:16px 16px 0}@media(max-width:920px){.stats,.detail-grid{grid-template-columns:repeat(2,1fr)}.filters{grid-template-columns:1fr 1fr}}@media(max-width:720px){.stats,.detail-grid,.filters{grid-template-columns:1fr}table,thead,tbody,tr,td{display:block}thead{display:none}tr{padding:10px;border-bottom:1px solid var(--line)}td{border:0;padding:6px 12px}}</style>"#;

@@ -87,12 +87,23 @@ function App() {
   const [callableOnly, setCallableOnly] = useS(false);
   const [sort, setSort] = useS({ field: "id", dir: "asc" });
   const [domain, setDomain] = useS(null);            // null = browse all domains
-  const [openId, setOpenId] = useS(null);
+  const [openId, setOpenId] = useS(() => {
+    const m = location.pathname.match(/^\/tools\/(\d+)$/);
+    return m ? Number(m[1]) : null;
+  });
   const [ctx, setCtx] = useS({ wallet: false, x402: true, auth: false, budget: 1.0 });
   const [theme, setTheme] = useS(initialTheme);
   const inputRef = useR(null);
 
   useE(() => { document.documentElement.setAttribute("data-theme", theme); }, [theme]);
+  // Deep-link: scroll to the initially opened card after first render.
+  const deepLinked = useR(openId);
+  useE(() => {
+    if (deepLinked.current == null) return;
+    const el = document.querySelector(`[data-tool-id="${deepLinked.current}"]`);
+    if (el) setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "center" }), 120);
+    deepLinked.current = null;
+  }, []);
   useE(() => { document.documentElement.style.setProperty("--accent-raw", tw.accent); }, [tw.accent]);
   useE(() => { setLens(tw.startLens); }, [tw.startLens]);
 
@@ -129,7 +140,14 @@ function App() {
     })).filter((s) => s.items.length);
   }, [browseMode, filtered]);
 
-  function toggleCard(id) { setOpenId((cur) => (cur === id ? null : id)); }
+  function toggleCard(id) {
+    setOpenId((cur) => {
+      const next = cur === id ? null : id;
+      const path = next ? "/tools/" + next : "/";
+      if (location.pathname !== path) history.replaceState(null, "", path);
+      return next;
+    });
+  }
   function resetAll() { setQ(""); setCallableOnly(false); setDomain(null); }
   function pickDomain(k) { setDomain(k); setQ(""); setCallableOnly(false); window.scrollTo({ top: 0 }); }
   function cycleSort() {

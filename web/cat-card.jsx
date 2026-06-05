@@ -141,7 +141,7 @@ function CapabilityCard({ t, ctx, open, onToggle, onTag }) {
   }
 
   return (
-    <div className="card" data-open={open} data-dereg={dereg}>
+    <div className="card" data-open={open} data-dereg={dereg} data-tool-id={t.id}>
       <button className="chead" onClick={onToggle} aria-expanded={open}>
         <span className="cverdict">
           <span className={"vdot " + plan.status} />
@@ -210,7 +210,7 @@ function AgentRow({ t, ctx, open, onToggle }) {
   const price = t.has_x402 ? (p != null ? p : "metered") : "0";
 
   return (
-    <div className="arowwrap" data-open={open}>
+    <div className="arowwrap" data-open={open} data-tool-id={t.id}>
       <button className="arow" onClick={onToggle} aria-expanded={open}>
         <span className="aid">{String(t.id).padStart(2, "0")}</span>
         <span className="aname" data-dereg={t.status === "deregistered"}>{t.name}</span>

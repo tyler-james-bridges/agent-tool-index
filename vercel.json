@@ -3,6 +3,9 @@
   "buildCommand": null,
   "installCommand": null,
   "outputDirectory": "web",
+  "rewrites": [
+    { "source": "/tools/:id", "destination": "/index.html" }
+  ],
   "headers": [
     {
       "source": "/(.*\\.jsx|.*\\.js|.*\\.html)",

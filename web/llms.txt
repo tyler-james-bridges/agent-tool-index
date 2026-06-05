@@ -1,26 +1,38 @@
 # Agent Tool Index
 
-Agent Tool Index is a visual and agent-readable index for ERC-8257 tools on Base.
+Visual and agent-readable index for ERC-8257 tools on Base.
 
-Primary site:
-- /
+## Registry
 
-Static agent files:
-- /llms.txt
-- /registry-data.js
-
-Registry:
 - Chain ID: 8453
 - Registry address: 0x265BB2DBFC0A8165C9A1941Eb1372F349baD2cf1
 
-The static deployment serves the current registry snapshot through /registry-data.js as a JavaScript assignment to window.REGISTRY. The Rust server version also exposes live API routes for tool records, intent resolution, call planning, stats, sync, and OpenAPI.
+## Static Files
 
-Useful local/server API routes:
-- GET /api/tools
-- GET /api/tools/{tool_id}
-- POST /api/tools/{tool_id}/can_call
-- POST /api/resolve
-- GET /api/stats
-- GET /openapi.json
+- /llms.txt (this file)
+- /registry-data.js (current snapshot as window.REGISTRY)
 
-Tool records include status, creator, metadata URI, access predicate, manifest verification status, x402 detection, endpoint, tags, inputs, outputs, and checked_at timestamps.
+## API (requires Rust server)
+
+- GET /api/tools - list all indexed tools
+- GET /api/tools/{tool_id} - single tool record
+- POST /api/tools/{tool_id}/can_call - plan whether a caller can invoke a tool
+- POST /api/resolve - resolve intent/filter criteria to candidate tools
+- GET /api/stats - index statistics
+- GET /openapi.json - OpenAPI 3.1 schema
+
+## Tool Records
+
+Each tool record includes: status, creator, metadata URI, access predicate, manifest
+verification status (JCS keccak256 hash), x402 detection, endpoint, tags, inputs,
+outputs, pricing, and checked_at timestamps.
+
+## Resolve
+
+POST /api/resolve accepts: query, status, access, manifest_status, x402, limit.
+Returns scored candidates with invocation hints.
+
+## Call Planning
+
+POST /api/tools/{tool_id}/can_call accepts: wallet, budget_usdc, allow_x402, has_auth.
+Returns callable/conditional/not_callable with requirements, blockers, and steps.
