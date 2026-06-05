@@ -22,7 +22,7 @@ pub const CHAINS: &[ChainConfig] = &[
         chain_id: 1,
         name: "Ethereum",
         registry: "0x265BB2DBFC0A8165C9A1941Eb1372F349baD2cf1",
-        rpc_url: "https://eth.llamarpc.com",
+        rpc_url: "https://ethereum-rpc.publicnode.com",
         blockscout_url: "https://eth.blockscout.com",
     },
     ChainConfig {

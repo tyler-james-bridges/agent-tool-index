@@ -139,6 +139,7 @@ async fn main() -> Result<()> {
                 let stats = multi_snapshot.stats();
                 let snapshot: Snapshot = multi_snapshot.clone().into();
                 let chains_summary = snapshot.chains_summary();
+                save_snapshot(&cli.cache_path, &snapshot)?;
                 save_snapshot_db(&cli.db_path, &snapshot)?;
                 if !events.is_empty() {
                     save_events_db(&cli.db_path, &events)?;
