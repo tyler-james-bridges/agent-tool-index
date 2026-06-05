@@ -2,7 +2,7 @@
 
 Agent-first visual index for [ERC-8257](https://github.com/ethereum/ERCs/pull/1723) tools on Base.
 
-**Live:** [agent-tool-index.vercel.app](https://agent-tool-index.vercel.app)
+**Live:** [agenttoolindex.xyz](https://agenttoolindex.xyz)
 
 Syncs the onchain [ToolRegistry](https://github.com/ProjectOpenSea/tool-registry) (`0x265BB2...baD2cf1` on Base), fetches and verifies each tool manifest (JCS + keccak256), and exposes both a visual explorer and agent-readable API.
 
