@@ -485,6 +485,14 @@ main.wrap{padding-top:18px;}
 .walletbtn .waddr{font-weight:700;}
 .walletbtn .wnet{font-size:10px;color:var(--faint);padding-left:2px;}
 [data-lens="agent"] .walletbtn[data-on="true"]{border-color:var(--accent);}
+.walletwrap{position:relative;flex:0 0 auto;}
+.walletmenu{position:absolute;top:calc(100% + 6px);right:0;z-index:60;min-width:200px;background:var(--card);border:1px solid var(--ink);box-shadow:0 10px 30px rgba(0,0,0,.18);}
+.wm-head{padding:9px 12px;font-family:"IBM Plex Mono",monospace;font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--faint);border-bottom:1px solid var(--hair);}
+.wm-item{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;text-align:left;font-size:14px;font-weight:600;color:var(--ink);border-bottom:1px solid var(--hair);transition:background .12s;}
+.wm-item:last-child{border-bottom:0;}
+.wm-item:hover{background:var(--accent-soft);}
+.wm-ico{width:20px;height:20px;flex:0 0 auto;border-radius:4px;object-fit:cover;}
+.wm-ico.ph{background:var(--hair-strong);}
 
 .runpanel{margin-top:18px;border:1px solid var(--hair-2);background:var(--card-sunk);padding:16px;}
 .run-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;}

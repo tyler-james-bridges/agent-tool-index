@@ -20,26 +20,64 @@ async function connectWallet(push) {
   catch (e) { if (push) push(e && e.message ? e.message : "Wallet connection failed"); }
 }
 
+async function connectKey(key, push) {
+  if (!window.ATI) return;
+  try { await window.ATI.connect(key); }
+  catch (e) { if (push) push(e && e.message ? e.message : "Wallet connection failed"); }
+}
+
 function WalletButton() {
   const w = useWallet();
   const push = useToast();
+  const [picking, setPicking] = useRS(false);
   const net = w.chainIdNum && window.ATI ? Object.values(window.ATI.NETWORKS).find((n) => n.id === w.chainIdNum) : null;
+  const wallets = window.ATI ? window.ATI.listWallets() : [];
+
+  useRE(() => {
+    if (!picking) return;
+    const close = (e) => { if (!e.target.closest || !e.target.closest(".walletwrap")) setPicking(false); };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [picking]);
+
   if (w.address) {
     return (
-      <button className="walletbtn" data-on="true" onClick={() => copyText(w.address).then(() => push("Address copied"))}
-        title={w.address + (net ? " · " + net.name : "")}>
-        <span className="wdot" />
-        <span className="waddr">{short(w.address, 4)}</span>
-        {net && <span className="wnet">{net.name}</span>}
-      </button>
+      <div className="walletwrap">
+        <button className="walletbtn" data-on="true" onClick={() => copyText(w.address).then(() => push("Address copied"))}
+          title={w.address + (net ? " · " + net.name : "")}>
+          <span className="wdot" />
+          <span className="waddr">{short(w.address, 4)}</span>
+          {net && <span className="wnet">{net.name}</span>}
+        </button>
+      </div>
     );
   }
+
+  function onClick() {
+    if (!wallets.length) { connectWallet(push); return; }       // shows the "no wallet" message
+    if (wallets.length === 1) { connectKey(wallets[0].key, push); return; }
+    setPicking((v) => !v);                                       // multiple → let the user choose
+  }
+
   return (
-    <button className="walletbtn" onClick={() => connectWallet(push)} disabled={w.connecting}
-      title={w.hasProvider ? "Connect your wallet" : "No browser wallet detected"}>
-      <span className="wdot off" />
-      {w.connecting ? "Connecting…" : w.hasProvider ? "Connect wallet" : "No wallet"}
-    </button>
+    <div className="walletwrap">
+      <button className="walletbtn" onClick={onClick} disabled={w.connecting}
+        title={wallets.length ? "Connect your wallet" : "No browser wallet detected"}>
+        <span className="wdot off" />
+        {w.connecting ? "Connecting…" : wallets.length ? "Connect wallet" : "No wallet"}
+      </button>
+      {picking && wallets.length > 1 && (
+        <div className="walletmenu">
+          <div className="wm-head">Choose a wallet</div>
+          {wallets.map((wal) => (
+            <button className="wm-item" key={wal.key} onClick={() => { setPicking(false); connectKey(wal.key, push); }}>
+              {wal.icon ? <img className="wm-ico" src={wal.icon} alt="" /> : <span className="wm-ico ph" />}
+              <span className="wm-name">{wal.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

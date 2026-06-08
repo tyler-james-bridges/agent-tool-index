@@ -60,12 +60,29 @@
     state.provider = p || null;
     return state.provider;
   }
-  function hasProvider() { return !!provider(); }
-  function walletCount() {
-    let n = discovered.size;
-    if (window.ethereum) n = Math.max(n, Array.isArray(window.ethereum.providers) ? window.ethereum.providers.length : 1);
-    return n;
+  function hasProvider() { return listWallets().length > 0; }
+
+  // Every connectable wallet, EIP-6963 first, with injected fallback.
+  function listWallets() {
+    const out = [];
+    const seen = new Set();
+    discoveredProviders().forEach(({ info, provider: prov }, i) => {
+      const key = (info && (info.rdns || info.uuid || info.name)) || ("w" + i);
+      if (seen.has(prov)) return; seen.add(prov);
+      out.push({ key, name: (info && info.name) || "Wallet", icon: (info && info.icon) || null, provider: prov });
+    });
+    if (window.ethereum) {
+      const e = window.ethereum;
+      const injected = Array.isArray(e.providers) && e.providers.length ? e.providers : [e];
+      injected.forEach((prov, i) => {
+        if (seen.has(prov)) return; seen.add(prov);
+        const name = prov.isMetaMask ? "MetaMask" : prov.isCoinbaseWallet ? "Coinbase Wallet" : prov.isRabby ? "Rabby" : prov.isBraveWallet ? "Brave Wallet" : "Browser Wallet";
+        out.push({ key: "injected-" + i, name: name, icon: null, provider: prov });
+      });
+    }
+    return out;
   }
+  function walletCount() { return listWallets().length; }
 
   function emit() {
     const snap = getState();
@@ -92,13 +109,28 @@
     }
   }
 
-  async function connect() {
-    const p = provider();
-    if (!p) { emit(); throw new Error("No wallet detected. Install MetaMask or Coinbase Wallet to call tools from your own wallet."); }
+  async function connect(key) {
+    const list = listWallets();
+    let chosen = key ? list.find((w) => w.key === key) : null;
+    const p = (chosen && chosen.provider) || provider();
+    if (!p) { emit(); throw new Error("No wallet detected. Install MetaMask, Coinbase Wallet, Rabby, or another browser wallet."); }
+    state.provider = p; // lock the user's selection for the session
     state.connecting = true; emit();
     try {
-      const accs = await p.request({ method: "eth_requestAccounts" });
+      let accs;
+      try {
+        accs = await p.request({ method: "eth_requestAccounts" });
+      } catch (e) {
+        // Some wallets throw (e.g. "wallet must have at least one account") even
+        // when accounts exist — fall back to the already-authorized list.
+        try { accs = await p.request({ method: "eth_accounts" }); } catch (e2) {}
+        if (!accs || !accs.length) {
+          if (e && e.code === 4001) throw new Error("Connection request was rejected.");
+          throw new Error((e && e.message) || "Wallet did not return an account. Unlock it (and create/select an account), then retry.");
+        }
+      }
       state.address = (accs && accs[0]) || null;
+      if (!state.address) throw new Error("No account available. Unlock your wallet and create or select an account, then retry.");
       state.chainId = await p.request({ method: "eth_chainId" });
       wireEvents(p);
       return getState();
@@ -265,7 +297,7 @@
 
   window.ATI = {
     connect, refresh, ensureChain, subscribe, getState, runTool,
-    hasProvider, walletCount, fmtUsdcAtomic, NETWORKS,
+    hasProvider, walletCount, listWallets, fmtUsdcAtomic, NETWORKS,
   };
 
   // Discover wallets (EIP-6963) immediately, then pick up any already-authorized
