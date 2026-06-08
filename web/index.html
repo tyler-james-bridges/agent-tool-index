@@ -412,11 +412,12 @@ main.wrap{padding-top:18px;}
 
   /* command bar: two clean rows — controls on top, full-width search below */
   .cmdbar{flex-wrap:wrap;gap:10px 8px;padding:9px 0;}
-  /* row 1: brand mark + lens + wallet + theme toggle */
-  .brand{order:1;padding:6px 4px;margin-right:auto;}  /* lone mark, pushes controls right */
+  /* row 1: two clusters — [brand · lens] left, [wallet · theme] right.
+     The gap between them is a deliberate separator, not a stranded mark. */
+  .brand{order:1;padding:6px 4px;}
   .brand .mark{display:none;}
   .lens{order:2;}
-  .walletwrap{order:3;}
+  .walletwrap{order:3;margin-left:auto;}  /* opens the center gap, packs actions right */
   .thbtn{order:4;}
   /* row 2: search takes a full row of its own */
   .ask{order:5;flex:1 1 100%;padding:0 12px;gap:10px;height:46px;}
