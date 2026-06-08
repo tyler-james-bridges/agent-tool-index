@@ -15,9 +15,11 @@ function Glance({ t, onTag }) {
   );
 }
 
-function cardSummary(t, plan) {
-  const v = VERDICT_COPY[plan.status];
-  return v.label + " - " + v.line;
+// The collapsed-card summary is the tool's own one-liner (high signal, unique
+// per tool). The verdict still shows as the compact status dot + label.
+function cardSummary(t) {
+  return (t.description && t.description.trim())
+    || VERDICT_COPY[planCall(t, {}).status].line;
 }
 
 function HumanLens({ t, ctx, push }) {
@@ -156,7 +158,7 @@ function CapabilityCard({ t, ctx, open, onToggle, onTag }) {
             <span className="idx">#{String(t.id).padStart(2, "0")}</span>
             <span className="chain-badge" data-chain={t.chain_id}>{chainName(t.chain_id || 8453)}</span>
           </span>
-          <span className="sum">{cardSummary(t, plan)}</span>
+          <span className="sum">{cardSummary(t)}</span>
           <Glance t={t} onTag={onTag} />
         </span>
 
@@ -201,7 +203,7 @@ function CapabilityCard({ t, ctx, open, onToggle, onTag }) {
 }
 
 /* ---- AGENT lens list: flat machine table, one row per registry record ---- */
-function AgentRow({ t, ctx, open, onToggle }) {
+function AgentRow({ t, ctx, open, onToggle, rowNo }) {
   const push = useToast();
   const plan = planCall(t, ctx);
   const flags = [
@@ -217,7 +219,7 @@ function AgentRow({ t, ctx, open, onToggle }) {
   return (
     <div className="arowwrap" data-open={open} data-tool-id={t.uid}>
       <button className="arow" onClick={onToggle} aria-expanded={open}>
-        <span className="aid">{String(t.id).padStart(2, "0")}</span>
+        <span className="aid" title={"uid " + t.uid}>{String(rowNo).padStart(3, "0")}</span>
         <span className="aname" data-dereg={t.status === "deregistered"}>{t.name}</span>
         <span className={"averdict " + plan.status}>{plan.status}</span>
         <span className="aprice">{price}</span>
@@ -237,12 +239,12 @@ function AgentTable({ tools, ctx, openId, onToggle }) {
         <span className="acount">{tools.length} records</span>
       </div>
       <div className="acols">
-        <span>id</span><span>name</span><span>verdict</span><span>usdc</span><span>flags</span>
+        <span>#</span><span>name</span><span>verdict</span><span>usdc</span><span>flags</span>
       </div>
       {tools.length === 0 ? (
         <div className="anone">0 records match the current query and filters</div>
-      ) : tools.map((t) => (
-        <AgentRow key={t.uid} t={t} ctx={ctx} open={openId === t.uid} onToggle={() => onToggle(t.uid)} />
+      ) : tools.map((t, i) => (
+        <AgentRow key={t.uid} t={t} ctx={ctx} rowNo={i + 1} open={openId === t.uid} onToggle={() => onToggle(t.uid)} />
       ))}
     </div>
   );

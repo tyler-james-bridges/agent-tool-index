@@ -234,24 +234,37 @@ function App() {
 
         <div className="filterstrip">
           <div className="pills">
-            <button className="pill" data-on={allOn} onClick={resetAll}>All <span className="ct">{STAT.total}</span></button>
-            <button className="pill" data-tone="ok" data-on={callableOnly} onClick={() => setCallableOnly((v) => !v)}>
-              <span className="dot" style={{ background: "var(--ok)" }} />Callable now
-            </button>
-            {PILLS.map((p) => {
-              const on = q.split(/\s+/).map((s) => s.toLowerCase()).includes(p.key.toLowerCase());
-              return (
-                <button className="pill" data-tone={p.tone} data-on={on} key={p.key} onClick={() => setQ(toggleToken(q, p.key))}>
-                  {p.lab} <span className="ct">{p.count}</span>
-                </button>
-              );
-            })}
-            {CHAIN_PILLS.length > 1 && CHAIN_PILLS.map((cp) => (
-              <button className="pill" data-on={chain === cp.chain_id} key={cp.key}
-                onClick={() => setChain(chain === cp.chain_id ? null : cp.chain_id)}>
-                {cp.lab} <span className="ct">{cp.count}</span>
+            {/* primary state toggles */}
+            <span className="pgroup primary">
+              <button className="pill" data-on={allOn} onClick={resetAll}>All <span className="ct">{STAT.total}</span></button>
+              <button className="pill" data-tone="ok" data-on={callableOnly} onClick={() => setCallableOnly((v) => !v)}>
+                <span className="dot" style={{ background: "var(--ok)" }} />Callable now
               </button>
-            ))}
+            </span>
+            {/* secondary attribute filters (de-emphasized) */}
+            <span className="pdiv" aria-hidden="true" />
+            <span className="pgroup attrs">
+              {PILLS.map((p) => {
+                const on = q.split(/\s+/).map((s) => s.toLowerCase()).includes(p.key.toLowerCase());
+                return (
+                  <button className="pill sec" data-tone={p.tone} data-on={on} key={p.key} onClick={() => setQ(toggleToken(q, p.key))}>
+                    {p.lab} <span className="ct">{p.count}</span>
+                  </button>
+                );
+              })}
+            </span>
+            {/* chain filters (distinct cluster) */}
+            {CHAIN_PILLS.length > 1 && <span className="pdiv" aria-hidden="true" />}
+            {CHAIN_PILLS.length > 1 && (
+              <span className="pgroup chains">
+                {CHAIN_PILLS.map((cp) => (
+                  <button className="pill chain" data-on={chain === cp.chain_id} key={cp.key}
+                    onClick={() => setChain(chain === cp.chain_id ? null : cp.chain_id)}>
+                    {cp.lab} <span className="ct">{cp.count}</span>
+                  </button>
+                ))}
+              </span>
+            )}
           </div>
           <div className="fstrip-r">
             <span className="count"><b>{filtered.length}</b> of {STAT.total}</span>

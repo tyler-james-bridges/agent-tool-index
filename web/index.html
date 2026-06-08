@@ -155,9 +155,15 @@ main.wrap{padding-top:18px;}
 .thbtn:hover{border-color:var(--hair-strong);color:var(--accent-ink);}
 .thbtn svg{width:17px;height:17px;}
 
-/* ---- filter strip ---- */
-.filterstrip{display:flex;align-items:center;gap:14px;padding-bottom:15px;flex-wrap:wrap;}
-.pills{display:flex;gap:8px;flex-wrap:wrap;}
+/* ---- filter strip: one toolbar — grouped pills left, count+sort right.
+   No wrap on the strip itself: pills wrap inside their own box so the
+   count+sort cluster stays pinned top-right on the same toolbar line. ---- */
+.filterstrip{display:flex;align-items:flex-start;gap:18px;padding-bottom:15px;flex-wrap:nowrap;}
+.pills{display:flex;align-items:center;gap:10px;flex-wrap:wrap;flex:1 1 auto;min-width:0;}
+/* each group of related pills stays together as a cluster when the row wraps */
+.pgroup{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;}
+/* thin divider between the three control kinds (state | attributes | chains) */
+.pdiv{flex:0 0 auto;width:1px;align-self:stretch;min-height:22px;background:var(--hair-2);margin:0 2px;}
 .pill{font-family:"IBM Plex Mono",monospace;font-size:12.5px;font-weight:500;padding:7px 13px;border-radius:0;border:1px solid var(--hair-2);
   color:var(--ink-soft);background:var(--card);transition:.13s;display:inline-flex;align-items:center;gap:7px;white-space:nowrap;}
 .pill:hover{border-color:var(--hair-strong);}
@@ -166,7 +172,15 @@ main.wrap{padding-top:18px;}
 .pill[data-tone="ok"][data-on="true"]{background:var(--ok);border-color:var(--ok);}
 .pill[data-tone="accent"][data-on="true"]{background:var(--accent);border-color:var(--accent);}
 .pill .ct{font-variant-numeric:tabular-nums;opacity:.65;font-weight:600;}
-.fstrip-r{margin-left:auto;display:flex;align-items:center;gap:18px;}
+/* secondary attribute filters: lighter weight, recede until hovered/active */
+.pill.sec{background:transparent;border-color:var(--hair);color:var(--muted);}
+.pill.sec:hover{color:var(--ink-soft);border-color:var(--hair-strong);}
+.pill.sec[data-on="true"]{color:var(--paper);}
+.pill.sec .ct{opacity:.55;}
+/* chain filters: dotted leader marks them as a different axis (scope, not attribute) */
+.pill.chain{border-style:dashed;}
+.fstrip-r{margin-left:auto;flex:0 0 auto;display:inline-flex;align-items:center;gap:14px;
+  padding-left:18px;border-left:1px solid var(--hair-2);}
 
 /* ---- domain / category nav ---- */
 .domnav{display:flex;align-items:stretch;gap:8px;padding-bottom:15px;overflow-x:auto;scrollbar-width:none;}
@@ -437,16 +451,20 @@ main.wrap{padding-top:18px;}
   .walletbtn .waddr{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .walletbtn .wnet{display:none;}      /* address alone stays readable */
 
-  /* filters: one swipeable row, never a tall wrap, with right-edge fade */
-  .filterstrip{flex-wrap:nowrap;overflow-x:auto;gap:8px;padding-bottom:12px;
+  /* filters: pills become one swipeable row; count+sort sit on a tidy row below */
+  .filterstrip{flex-wrap:wrap;gap:10px;padding-bottom:12px;}
+  .pills{flex-wrap:nowrap;overflow-x:auto;gap:8px;flex:1 1 100%;min-width:0;
     margin:0 -14px;padding-left:14px;padding-right:14px;scrollbar-width:none;
     -webkit-overflow-scrolling:touch;
     -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);
     mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);}
-  .filterstrip::-webkit-scrollbar{display:none;}
-  .pills{flex-wrap:nowrap;}
+  .pills::-webkit-scrollbar{display:none;}
+  .pgroup{flex:0 0 auto;flex-wrap:nowrap;}
+  .pdiv{flex:0 0 auto;min-height:30px;}
   .pill{flex:0 0 auto;min-height:34px;}
-  .fstrip-r{margin-left:0;flex:0 0 auto;gap:10px;}
+  /* count + sort: their own row, count left / sort right, no border seam */
+  .fstrip-r{margin-left:0;flex:1 1 100%;justify-content:space-between;gap:10px;
+    padding-left:0;border-left:0;}
 
   /* domain nav: single swipeable row with matching right-edge fade */
   .domnav{margin:0 -14px;padding-left:14px;padding-right:14px;padding-bottom:12px;
@@ -466,9 +484,10 @@ main.wrap{padding-top:18px;}
   /* caller context: comfortable stacked controls */
   .callerbar{gap:9px;padding:12px 13px;margin-bottom:16px;}
   .callerbar .ttl{width:100%;}
-  .ctxgroup{width:100%;}
-  .ctxtog{flex:1 1 calc(50% - 5px);justify-content:space-between;padding:9px 12px;font-size:13.5px;}
-  .ctxnum{flex:1 1 100%;justify-content:space-between;}
+  .ctxgroup{width:100%;display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  /* keep the knob beside its label (no space-between stranding on wide rows) */
+  .ctxtog{justify-content:flex-start;padding:10px 12px;font-size:13.5px;min-height:42px;}
+  .ctxnum{grid-column:1 / -1;justify-content:flex-start;}
   .ctxnum input{flex:1;width:auto;}
   .callerbar .note{display:none;}
 
