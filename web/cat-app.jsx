@@ -39,6 +39,9 @@ const PILLS = [
   { key: "access:gated",         lab: "Gated",         tone: "",       count: STAT.gated },
   { key: "status:deregistered",  lab: "Deregistered",  tone: "",       count: STAT.dereg },
 ];
+// Keep the strip to one clean row: only the most-used attribute filters show by
+// default; the diagnostic ones + chain pills hide behind a "More filters" toggle.
+const COMMON_PILL_KEYS = new Set(["free", "x402"]);
 
 const EXAMPLES = ["appraise an nft", "scan a wallet for risk", "resolve an ens name", "token burn stats"];
 
@@ -104,6 +107,7 @@ function App() {
   const [callableOnly, setCallableOnly] = useS(false);
   const [sort, setSort] = useS({ field: "id", dir: "asc" });
   const [chain, setChain] = useS(null);              // null = all chains
+  const [showMore, setShowMore] = useS(false);       // reveal diagnostic + chain filters
   const [domain, setDomain] = useS(INITIAL_TOOL != null ? domainOf(REG.tools.find((t) => t.uid === INITIAL_TOOL)) : null);  // null = browse all domains
   const [openId, setOpenId] = useS(INITIAL_TOOL);
   const [ctx, setCtx] = useS({ wallet: false, x402: true, auth: false, budget: 1.0 });
@@ -191,6 +195,14 @@ function App() {
   const sortLab = { id: "registry order", verdict: "callability", price: "price" }[sort.field];
   const anyFilter = q.trim() || callableOnly || domain;
   const allOn = !anyFilter;
+  // Filter strip: show common pills inline, tuck the rest behind "More filters".
+  const qTokens = q.split(/\s+/).map((s) => s.toLowerCase());
+  const isTokOn = (key) => qTokens.includes(key.toLowerCase());
+  const commonPills = PILLS.filter((p) => COMMON_PILL_KEYS.has(p.key));
+  const morePills = PILLS.filter((p) => !COMMON_PILL_KEYS.has(p.key));
+  const hiddenActive = chain != null || morePills.some((p) => isTokOn(p.key));
+  const moreOpen = showMore || hiddenActive;     // never hide an active filter
+  const moreCount = morePills.length + (CHAIN_PILLS.length > 1 ? CHAIN_PILLS.length : 0);
 
   return (
     <div data-lens={lens}>
@@ -234,28 +246,31 @@ function App() {
 
         <div className="filterstrip">
           <div className="pills">
-            {/* primary state toggles */}
+            {/* primary state toggles + most-used attribute filters, all on one row */}
             <span className="pgroup primary">
               <button className="pill" data-on={allOn} onClick={resetAll}>All <span className="ct">{STAT.total}</span></button>
               <button className="pill" data-tone="ok" data-on={callableOnly} onClick={() => setCallableOnly((v) => !v)}>
                 <span className="dot" style={{ background: "var(--ok)" }} />Callable now
               </button>
+              {commonPills.map((p) => (
+                <button className="pill sec" data-tone={p.tone} data-on={isTokOn(p.key)} key={p.key} onClick={() => setQ(toggleToken(q, p.key))}>
+                  {p.lab} <span className="ct">{p.count}</span>
+                </button>
+              ))}
+              <button className="pill morebtn" data-on={moreOpen} aria-expanded={moreOpen}
+                onClick={() => setShowMore((v) => !v)}>
+                {moreOpen ? "Fewer" : "More filters"} <span className="mcar">{moreOpen ? "−" : "+" + moreCount}</span>
+              </button>
             </span>
-            {/* secondary attribute filters (de-emphasized) */}
-            <span className="pgroup attrs">
-              {PILLS.map((p) => {
-                const on = q.split(/\s+/).map((s) => s.toLowerCase()).includes(p.key.toLowerCase());
-                return (
-                  <button className="pill sec" data-tone={p.tone} data-on={on} key={p.key} onClick={() => setQ(toggleToken(q, p.key))}>
+            {/* diagnostic attribute filters + chains, revealed by "More filters" */}
+            {moreOpen && (
+              <span className="pgroup attrs more">
+                {morePills.map((p) => (
+                  <button className="pill sec" data-tone={p.tone} data-on={isTokOn(p.key)} key={p.key} onClick={() => setQ(toggleToken(q, p.key))}>
                     {p.lab} <span className="ct">{p.count}</span>
                   </button>
-                );
-              })}
-            </span>
-            {/* chain filters (distinct cluster) */}
-            {CHAIN_PILLS.length > 1 && (
-              <span className="pgroup chains">
-                {CHAIN_PILLS.map((cp) => (
+                ))}
+                {CHAIN_PILLS.length > 1 && CHAIN_PILLS.map((cp) => (
                   <button className="pill chain" data-on={chain === cp.chain_id} key={cp.key}
                     onClick={() => setChain(chain === cp.chain_id ? null : cp.chain_id)}>
                     {cp.lab} <span className="ct">{cp.count}</span>
