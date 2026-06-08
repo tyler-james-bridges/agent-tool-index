@@ -4,6 +4,9 @@ on:
     - cron: '15 */2 * * *'  # Every 2 hours at :15
   workflow_dispatch: {}  # Manual trigger
 
+permissions:
+  contents: write
+
 jobs:
   sync:
     runs-on: ubuntu-latest
