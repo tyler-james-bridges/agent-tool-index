@@ -25,17 +25,47 @@
   const state = { provider: null, address: null, chainId: null, connecting: false };
   const listeners = new Set();
 
+  // EIP-6963: modern wallets announce themselves via events and may not set
+  // window.ethereum at all (especially with multiple wallets installed).
+  const discovered = new Map(); // rdns -> { info, provider }
+  function setupDiscovery() {
+    if (window.__atiDiscovery) return;
+    window.__atiDiscovery = true;
+    window.addEventListener("eip6963:announceProvider", (e) => {
+      const detail = e && e.detail;
+      if (!detail || !detail.provider) return;
+      const key = (detail.info && (detail.info.rdns || detail.info.uuid || detail.info.name)) || String(discovered.size);
+      const had = discovered.has(key);
+      discovered.set(key, { info: detail.info, provider: detail.provider });
+      if (!had && !state.address) emit(); // a wallet appeared — refresh the button
+    });
+    try { window.dispatchEvent(new Event("eip6963:requestProvider")); } catch (e) {}
+  }
+
+  function discoveredProviders() { return Array.from(discovered.values()); }
+
   function provider() {
     if (state.provider) return state.provider;
     let p = window.ethereum;
-    // If multiple wallets injected, prefer the default; fall back to first.
+    // If multiple wallets injected on window.ethereum, prefer a known one.
     if (p && Array.isArray(p.providers) && p.providers.length) {
       p = p.providers.find((x) => x.isMetaMask) || p.providers.find((x) => x.isCoinbaseWallet) || p.providers[0];
+    }
+    // Fall back to an EIP-6963-announced provider.
+    if (!p && discovered.size) {
+      const list = discoveredProviders();
+      const mm = list.find((x) => x.info && /metamask/i.test(x.info.rdns || x.info.name || ""));
+      p = (mm || list[0]).provider;
     }
     state.provider = p || null;
     return state.provider;
   }
   function hasProvider() { return !!provider(); }
+  function walletCount() {
+    let n = discovered.size;
+    if (window.ethereum) n = Math.max(n, Array.isArray(window.ethereum.providers) ? window.ethereum.providers.length : 1);
+    return n;
+  }
 
   function emit() {
     const snap = getState();
@@ -235,10 +265,12 @@
 
   window.ATI = {
     connect, refresh, ensureChain, subscribe, getState, runTool,
-    hasProvider, fmtUsdcAtomic, NETWORKS,
+    hasProvider, walletCount, fmtUsdcAtomic, NETWORKS,
   };
 
-  // Pick up an already-authorized session on load (no popup).
+  // Discover wallets (EIP-6963) immediately, then pick up any already-authorized
+  // session without prompting.
+  setupDiscovery();
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", refresh);
   } else {
