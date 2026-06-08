@@ -42,6 +42,15 @@ const PILLS = [
 
 const EXAMPLES = ["appraise an nft", "scan a wallet for risk", "resolve an ens name", "token burn stats"];
 
+// Deep links: /tools/{id} opens that tool directly (Vercel rewrites it to index.html).
+function toolIdFromPath() {
+  const m = window.location.pathname.match(/^\/tools\/(\d+)/);
+  if (!m) return null;
+  const id = parseInt(m[1], 10);
+  return REG.tools.some((t) => t.id === id) ? id : null;
+}
+const INITIAL_TOOL = toolIdFromPath();
+
 function LensSwitch({ lens, setLens }) {
   const wrap = useR(null);
   const refs = { human: useR(null), agent: useR(null) };
@@ -93,11 +102,8 @@ function App() {
   const [callableOnly, setCallableOnly] = useS(false);
   const [sort, setSort] = useS({ field: "id", dir: "asc" });
   const [chain, setChain] = useS(null);              // null = all chains
-  const [domain, setDomain] = useS(null);            // null = browse all domains
-  const [openId, setOpenId] = useS(() => {
-    const m = location.pathname.match(/^\/tools\/(\d+)$/);
-    return m ? Number(m[1]) : null;
-  });
+  const [domain, setDomain] = useS(INITIAL_TOOL != null ? domainOf(REG.tools.find((t) => t.id === INITIAL_TOOL)) : null);  // null = browse all domains
+  const [openId, setOpenId] = useS(INITIAL_TOOL);
   const [ctx, setCtx] = useS({ wallet: false, x402: true, auth: false, budget: 1.0 });
   const [theme, setTheme] = useS(initialTheme);
   const inputRef = useR(null);
@@ -113,6 +119,23 @@ function App() {
   }, []);
   useE(() => { document.documentElement.style.setProperty("--accent-raw", tw.accent); }, [tw.accent]);
   useE(() => { setLens(tw.startLens); }, [tw.startLens]);
+
+  // Keep the URL in sync with the open tool so it is shareable / reload-safe.
+  useE(() => {
+    const path = openId != null ? "/tools/" + openId : "/";
+    if (window.location.pathname !== path) window.history.pushState({ openId }, "", path);
+  }, [openId]);
+
+  // Back/forward navigation reopens (or closes) the matching tool.
+  useE(() => {
+    function onPop() {
+      const id = toolIdFromPath();
+      setOpenId(id);
+      if (id != null) { const t = REG.tools.find((x) => x.id === id); if (t) setDomain(domainOf(t)); }
+    }
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
 
   function flipTheme() {
     setTheme((t) => {
