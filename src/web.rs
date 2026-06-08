@@ -425,7 +425,7 @@ fn openapi_schemas() -> Value {
     })
 }
 
-fn frontend_registry(snapshot: &Snapshot) -> Value {
+pub fn frontend_registry(snapshot: &Snapshot) -> Value {
     let chains_summary: Vec<Value> = snapshot.chains_summary().iter().map(|(cid, name, count)| {
         json!({ "chain_id": cid, "name": name, "tool_count": count })
     }).collect();
@@ -439,11 +439,11 @@ fn frontend_registry(snapshot: &Snapshot) -> Value {
     })
 }
 
-fn chain_name_for(chain_id: u64) -> &'static str {
+pub fn chain_name_for(chain_id: u64) -> &'static str {
     CHAINS.iter().find(|c| c.chain_id == chain_id).map(|c| c.name).unwrap_or("Unknown")
 }
 
-fn frontend_tool(tool: &ToolRecord) -> Value {
+pub fn frontend_tool(tool: &ToolRecord) -> Value {
     json!({
         "id": tool.tool_id,
         "chain_id": tool.chain_id,
@@ -472,7 +472,7 @@ fn frontend_tool(tool: &ToolRecord) -> Value {
     })
 }
 
-fn frontend_tool_name(tool: &ToolRecord) -> String {
+pub fn frontend_tool_name(tool: &ToolRecord) -> String {
     tool.name
         .as_deref()
         .or(tool.metadata_uri.as_deref())
@@ -480,7 +480,7 @@ fn frontend_tool_name(tool: &ToolRecord) -> String {
         .unwrap_or_else(|| format!("Tool #{}", tool.tool_id))
 }
 
-fn frontend_access_label(tool: &ToolRecord) -> &'static str {
+pub fn frontend_access_label(tool: &ToolRecord) -> &'static str {
     match access_label(tool) {
         "predicate" => "gated",
         other => other,
@@ -1081,7 +1081,7 @@ fn pricing_amount_usdc(tool: &ToolRecord) -> Option<f64> {
     })
 }
 
-fn status_text(tool: &ToolRecord) -> &'static str {
+pub fn status_text(tool: &ToolRecord) -> &'static str {
     match tool.status {
         ToolStatus::Active => "active",
         ToolStatus::Deregistered => "deregistered",

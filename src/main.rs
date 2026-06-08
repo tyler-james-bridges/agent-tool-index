@@ -48,6 +48,7 @@ enum Command {
         #[arg(long, help = "Comma-separated chain IDs to backfill (default: all)")]
         chains: Option<String>,
     },
+    ExportStatic,
     Serve {
         #[arg(long, default_value = "127.0.0.1:8787")]
         addr: String,
@@ -202,6 +203,26 @@ async fn main() -> Result<()> {
                     inserted
                 );
             }
+        }
+        Command::ExportStatic => {
+            init_db(&cli.db_path)?;
+            let snapshot = load_snapshot_db(&cli.db_path)?
+                .unwrap_or_else(|| load_snapshot(&cli.cache_path).unwrap_or_else(|_| fallback_snapshot().unwrap()));
+            
+            let registry = web::frontend_registry(&snapshot);
+            let js_content = format!("window.REGISTRY = {};", serde_json::to_string(&registry)?);
+            
+            std::fs::write("web/registry-data.js", js_content)?;
+            
+            let stats = snapshot.stats();
+            let chains_summary = snapshot.chains_summary();
+            println!(
+                "exported static registry: {} tools across {} chains ({} active, {} verified manifests)",
+                stats.total_ids,
+                chains_summary.len(),
+                stats.active,
+                stats.verified_manifests
+            );
         }
         Command::Serve { addr } => {
             init_db(&cli.db_path)?;
