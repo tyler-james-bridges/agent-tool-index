@@ -75,7 +75,8 @@ function WalletButton() {
       <button className="walletbtn" onClick={onClick} disabled={w.connecting}
         title={wallets.length ? "Connect your wallet" : noWalletTitle}>
         <span className="wdot off" />
-        {w.connecting ? "Connecting…" : wallets.length ? "Connect wallet" : noWalletText}
+        <span className="wlabel">{w.connecting ? "Connecting…" : wallets.length ? "Connect wallet" : noWalletText}</span>
+        <span className="wlabel-short" aria-hidden="true">{w.connecting ? "…" : wallets.length ? "Connect" : noWalletText}</span>
       </button>
       {picking && (
         <div className="walletmenu">

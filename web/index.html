@@ -406,32 +406,52 @@ main.wrap{padding-top:18px;}
 .pagefoot a{color:var(--muted);}
 
 @media(max-width:760px){
+  html,body{overflow-x:hidden;}   /* no stray horizontal scroll on phones */
   .wrap{padding:0 14px;}
   main.wrap{padding-top:14px;}
 
-  /* command bar: square mark only, search, icon-only lens */
-  .cmdbar{gap:10px;padding:9px 0;}
-  .brand{padding:6px 2px;}          /* keep a comfortable tap target for the lone mark */
+  /* command bar: two clean rows — controls on top, full-width search below */
+  .cmdbar{flex-wrap:wrap;gap:10px 8px;padding:9px 0;}
+  /* row 1: brand mark + lens + wallet + theme toggle */
+  .brand{order:1;padding:6px 4px;margin-right:auto;}  /* lone mark, pushes controls right */
   .brand .mark{display:none;}
-  .ask{padding:0 12px;gap:10px;}
+  .lens{order:2;}
+  .walletwrap{order:3;}
+  .thbtn{order:4;}
+  /* row 2: search takes a full row of its own */
+  .ask{order:5;flex:1 1 100%;padding:0 12px;gap:10px;height:46px;}
   .ask .q{font-size:16px;}
   .ask input{font-size:16px;padding:11px 0;}
   .lensswitch{padding:3px;gap:2px;}
-  .lensswitch button{padding:8px 11px;}
+  .lensswitch button{padding:9px 12px;min-height:40px;}  /* >=40px tap target */
   .lensswitch button .lbl{display:none;}      /* icon-only on mobile */
   .lensswitch button .ico{width:18px;height:18px;}
 
-  /* filters: one swipeable row, never a tall wrap */
+  /* wallet: compact so it never crushes the row */
+  .walletbtn{padding:0 11px;font-size:11.5px;max-width:46vw;}
+  /* .cmdbar prefix lifts specificity above the base .wlabel-short rule (~l505),
+     which would otherwise win on source order since max-width media adds none. */
+  .cmdbar .walletbtn .wlabel{display:none;}
+  .cmdbar .walletbtn .wlabel-short{display:inline;}
+  .walletbtn .waddr{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .walletbtn .wnet{display:none;}      /* address alone stays readable */
+
+  /* filters: one swipeable row, never a tall wrap, with right-edge fade */
   .filterstrip{flex-wrap:nowrap;overflow-x:auto;gap:8px;padding-bottom:12px;
     margin:0 -14px;padding-left:14px;padding-right:14px;scrollbar-width:none;
-    -webkit-overflow-scrolling:touch;}
+    -webkit-overflow-scrolling:touch;
+    -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);
+    mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);}
   .filterstrip::-webkit-scrollbar{display:none;}
   .pills{flex-wrap:nowrap;}
-  .pill{flex:0 0 auto;}
+  .pill{flex:0 0 auto;min-height:34px;}
   .fstrip-r{margin-left:0;flex:0 0 auto;gap:10px;}
 
-  .domnav{margin:0 -14px;padding-left:14px;padding-right:14px;padding-bottom:12px;}
-  .domchip{padding:8px 12px;gap:8px;}
+  /* domain nav: single swipeable row with matching right-edge fade */
+  .domnav{margin:0 -14px;padding-left:14px;padding-right:14px;padding-bottom:12px;
+    -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);
+    mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);}
+  .domchip{padding:9px 12px;gap:8px;min-height:42px;}
   .domchip .di{width:17px;height:17px;}
 
   .shelves{gap:26px;}
@@ -484,6 +504,7 @@ main.wrap{padding-top:18px;}
 .walletbtn .wdot.off{background:var(--faint);box-shadow:none;}
 .walletbtn .waddr{font-weight:700;}
 .walletbtn .wnet{font-size:10px;color:var(--faint);padding-left:2px;}
+.walletbtn .wlabel-short{display:none;}  /* compact label swapped in on mobile */
 [data-lens="agent"] .walletbtn[data-on="true"]{border-color:var(--accent);}
 .walletwrap{position:relative;flex:0 0 auto;}
 .walletmenu{position:absolute;top:calc(100% + 6px);right:0;z-index:60;min-width:200px;background:var(--card);border:1px solid var(--ink);box-shadow:0 10px 30px rgba(0,0,0,.18);}
