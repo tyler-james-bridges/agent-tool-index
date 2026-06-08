@@ -54,27 +54,47 @@ function WalletButton() {
   }
 
   function onClick() {
-    if (!wallets.length) { connectWallet(push); return; }       // shows the "no wallet" message
+    if (!wallets.length) {
+      if (window.ATI && window.ATI.isMobile()) {
+        setPicking((v) => !v);                                   // mobile → show wallet app links
+        return;
+      }
+      connectWallet(push);                                       // desktop → shows the "no wallet" message
+      return;
+    }
     if (wallets.length === 1) { connectKey(wallets[0].key, push); return; }
     setPicking((v) => !v);                                       // multiple → let the user choose
   }
 
+  const isMobile = window.ATI && window.ATI.isMobile();
+  const noWalletTitle = isMobile ? "Open in a wallet app" : "No browser wallet detected";
+  const noWalletText = isMobile ? "Connect" : "No wallet";
+
   return (
     <div className="walletwrap">
       <button className="walletbtn" onClick={onClick} disabled={w.connecting}
-        title={wallets.length ? "Connect your wallet" : "No browser wallet detected"}>
+        title={wallets.length ? "Connect your wallet" : noWalletTitle}>
         <span className="wdot off" />
-        {w.connecting ? "Connecting…" : wallets.length ? "Connect wallet" : "No wallet"}
+        {w.connecting ? "Connecting…" : wallets.length ? "Connect wallet" : noWalletText}
       </button>
-      {picking && wallets.length > 1 && (
+      {picking && (
         <div className="walletmenu">
-          <div className="wm-head">Choose a wallet</div>
-          {wallets.map((wal) => (
-            <button className="wm-item" key={wal.key} onClick={() => { setPicking(false); connectKey(wal.key, push); }}>
-              {wal.icon ? <img className="wm-ico" src={wal.icon} alt="" /> : <span className="wm-ico ph" />}
-              <span className="wm-name">{wal.name}</span>
-            </button>
-          ))}
+          <div className="wm-head">{!wallets.length && isMobile ? "Open in a wallet app" : "Choose a wallet"}</div>
+          {!wallets.length && isMobile ? (
+            window.ATI.mobileWalletLinks().map((link) => (
+              <a className="wm-item" key={link.name} href={link.url}>
+                <span className="wm-ico ph" />
+                <span className="wm-name">{link.name}</span>
+              </a>
+            ))
+          ) : (
+            wallets.map((wal) => (
+              <button className="wm-item" key={wal.key} onClick={() => { setPicking(false); connectKey(wal.key, push); }}>
+                {wal.icon ? <img className="wm-ico" src={wal.icon} alt="" /> : <span className="wm-ico ph" />}
+                <span className="wm-name">{wal.name}</span>
+              </button>
+            ))
+          )}
         </div>
       )}
     </div>

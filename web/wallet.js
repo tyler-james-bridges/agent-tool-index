@@ -307,9 +307,23 @@
     };
   }
 
+  function isMobile() {
+    return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  }
+
+  function mobileWalletLinks() {
+    const url = encodeURIComponent(window.location.href);
+    return [
+      { name: "MetaMask", url: "https://metamask.app.link/dapp/" + window.location.host + window.location.pathname },
+      { name: "Coinbase Wallet", url: "https://go.cb-w.com/dapp?cb_url=" + url },
+      { name: "Trust Wallet", url: "https://link.trustwallet.com/open_url?coin_id=60&url=" + url },
+    ];
+  }
+
   window.ATI = {
     connect, refresh, ensureChain, subscribe, getState, runTool,
     hasProvider, walletCount, listWallets, fmtUsdcAtomic, NETWORKS,
+    isMobile, mobileWalletLinks,
   };
 
   // Discover wallets (EIP-6963) immediately, then pick up any already-authorized
