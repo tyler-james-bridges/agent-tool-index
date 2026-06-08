@@ -4,6 +4,7 @@
   "installCommand": null,
   "outputDirectory": "web",
   "rewrites": [
+    { "source": "/openapi.json", "destination": "/api/openapi" },
     { "source": "/tools/:id", "destination": "/index.html" }
   ],
   "headers": [

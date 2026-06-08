@@ -1,0 +1,247 @@
+// wallet.js — vanilla browser wallet + x402 client for Agent Tool Index.
+// No build step, no external libs: talks to the injected EIP-1193 provider
+// (window.ethereum) and runs the full x402 "exact" flow (EIP-3009
+// transferWithAuthorization signed via eth_signTypedData_v4), routing every
+// tool call through the same-origin /api/call proxy to avoid CORS.
+(function () {
+  "use strict";
+
+  // x402 network name -> EVM chain id.
+  const NETWORKS = {
+    base: { id: 8453, hex: "0x2105", name: "Base" },
+    "base-sepolia": { id: 84532, hex: "0x14a34", name: "Base Sepolia" },
+    ethereum: { id: 1, hex: "0x1", name: "Ethereum" },
+    mainnet: { id: 1, hex: "0x1", name: "Ethereum" },
+    "avalanche": { id: 43114, hex: "0xa86a", name: "Avalanche" },
+    "polygon": { id: 137, hex: "0x89", name: "Polygon" },
+    "arbitrum": { id: 42161, hex: "0xa4b1", name: "Arbitrum" },
+    "optimism": { id: 10, hex: "0xa", name: "Optimism" },
+  };
+  const CHAIN_ADD = {
+    "0x2105": { chainName: "Base", nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: ["https://mainnet.base.org"], blockExplorerUrls: ["https://basescan.org"] },
+    "0x14a34": { chainName: "Base Sepolia", nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: ["https://sepolia.base.org"], blockExplorerUrls: ["https://sepolia.basescan.org"] },
+  };
+
+  const state = { provider: null, address: null, chainId: null, connecting: false };
+  const listeners = new Set();
+
+  function provider() {
+    if (state.provider) return state.provider;
+    let p = window.ethereum;
+    // If multiple wallets injected, prefer the default; fall back to first.
+    if (p && Array.isArray(p.providers) && p.providers.length) {
+      p = p.providers.find((x) => x.isMetaMask) || p.providers.find((x) => x.isCoinbaseWallet) || p.providers[0];
+    }
+    state.provider = p || null;
+    return state.provider;
+  }
+  function hasProvider() { return !!provider(); }
+
+  function emit() {
+    const snap = getState();
+    listeners.forEach((fn) => { try { fn(snap); } catch (e) {} });
+    try { window.dispatchEvent(new CustomEvent("ati:wallet", { detail: snap })); } catch (e) {}
+  }
+  function subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); }
+  function getState() {
+    return {
+      hasProvider: hasProvider(),
+      address: state.address,
+      chainId: state.chainId,
+      chainIdNum: state.chainId ? parseInt(state.chainId, 16) : null,
+      connecting: state.connecting,
+    };
+  }
+
+  function wireEvents(p) {
+    if (!p || p.__atiWired) return;
+    p.__atiWired = true;
+    if (p.on) {
+      p.on("accountsChanged", (accs) => { state.address = (accs && accs[0]) || null; emit(); });
+      p.on("chainChanged", (cid) => { state.chainId = cid; emit(); });
+    }
+  }
+
+  async function connect() {
+    const p = provider();
+    if (!p) { emit(); throw new Error("No wallet detected. Install MetaMask or Coinbase Wallet to call tools from your own wallet."); }
+    state.connecting = true; emit();
+    try {
+      const accs = await p.request({ method: "eth_requestAccounts" });
+      state.address = (accs && accs[0]) || null;
+      state.chainId = await p.request({ method: "eth_chainId" });
+      wireEvents(p);
+      return getState();
+    } finally {
+      state.connecting = false; emit();
+    }
+  }
+
+  async function refresh() {
+    const p = provider();
+    if (!p) return getState();
+    try {
+      const accs = await p.request({ method: "eth_accounts" });
+      state.address = (accs && accs[0]) || null;
+      if (state.address) { state.chainId = await p.request({ method: "eth_chainId" }); wireEvents(p); }
+    } catch (e) {}
+    emit();
+    return getState();
+  }
+
+  async function ensureChain(hex) {
+    const p = provider();
+    if (!p) throw new Error("No wallet");
+    if (state.chainId && state.chainId.toLowerCase() === hex.toLowerCase()) return;
+    try {
+      await p.request({ method: "wallet_switchEthereumChain", params: [{ chainId: hex }] });
+    } catch (err) {
+      if (err && (err.code === 4902 || (err.data && err.data.originalError && err.data.originalError.code === 4902)) && CHAIN_ADD[hex]) {
+        await p.request({ method: "wallet_addEthereumChain", params: [Object.assign({ chainId: hex }, CHAIN_ADD[hex])] });
+      } else {
+        throw err;
+      }
+    }
+    state.chainId = await p.request({ method: "eth_chainId" }); emit();
+  }
+
+  // ---- low-level helpers ----
+  function randomNonce() {
+    const b = new Uint8Array(32);
+    (window.crypto || window.msCrypto).getRandomValues(b);
+    return "0x" + Array.from(b).map((x) => x.toString(16).padStart(2, "0")).join("");
+  }
+  function b64(str) {
+    // JSON here is pure ASCII (hex + digits), so btoa is safe.
+    return btoa(unescape(encodeURIComponent(str)));
+  }
+  function fmtUsdcAtomic(v) {
+    try { return (Number(v) / 1e6).toString(); } catch (e) { return String(v); }
+  }
+
+  async function postCall(url, body, xPayment) {
+    const res = await fetch("/api/call", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ url, body, xPayment: xPayment || undefined }),
+    });
+    return res.json(); // envelope: { ok, status, headers, body }
+  }
+
+  // Build + sign the x402 "exact" EVM payment (EIP-3009 transferWithAuthorization).
+  async function buildPayment(accept) {
+    const p = provider();
+    if (!p || !state.address) throw new Error("Connect a wallet first.");
+    const net = NETWORKS[accept.network];
+    if (!net) throw new Error("Unsupported x402 network: " + accept.network);
+    await ensureChain(net.hex);
+
+    const now = Math.floor(Date.now() / 1000);
+    const authorization = {
+      from: state.address,
+      to: accept.payTo,
+      value: String(accept.maxAmountRequired),
+      validAfter: "0",
+      validBefore: String(now + (accept.maxTimeoutSeconds || 60)),
+      nonce: randomNonce(),
+    };
+    const typedData = {
+      types: {
+        EIP712Domain: [
+          { name: "name", type: "string" },
+          { name: "version", type: "string" },
+          { name: "chainId", type: "uint256" },
+          { name: "verifyingContract", type: "address" },
+        ],
+        TransferWithAuthorization: [
+          { name: "from", type: "address" },
+          { name: "to", type: "address" },
+          { name: "value", type: "uint256" },
+          { name: "validAfter", type: "uint256" },
+          { name: "validBefore", type: "uint256" },
+          { name: "nonce", type: "bytes32" },
+        ],
+      },
+      domain: {
+        name: (accept.extra && accept.extra.name) || "USD Coin",
+        version: (accept.extra && accept.extra.version) || "2",
+        chainId: net.id,
+        verifyingContract: accept.asset,
+      },
+      primaryType: "TransferWithAuthorization",
+      message: authorization,
+    };
+    const signature = await p.request({
+      method: "eth_signTypedData_v4",
+      params: [state.address, JSON.stringify(typedData)],
+    });
+    const payment = {
+      x402Version: 1,
+      scheme: accept.scheme || "exact",
+      network: accept.network,
+      payload: { signature, authorization },
+    };
+    return b64(JSON.stringify(payment));
+  }
+
+  function decodePaymentResponse(headerVal) {
+    if (!headerVal) return null;
+    try { return JSON.parse(decodeURIComponent(escape(atob(headerVal)))); } catch (e) {
+      try { return JSON.parse(atob(headerVal)); } catch (e2) { return headerVal; }
+    }
+  }
+
+  // High-level: run a tool. Returns { ok, status, data, paid, payment, accept, error }.
+  async function runTool(tool, inputs) {
+    const url = tool.endpoint;
+    if (!url) return { ok: false, status: 0, error: "Tool has no endpoint." };
+
+    let env;
+    try { env = await postCall(url, inputs); }
+    catch (e) { return { ok: false, status: 0, error: "Network error reaching proxy: " + (e && e.message || e) }; }
+
+    if (env.status === 402 && env.body && Array.isArray(env.body.accepts)) {
+      const accept = env.body.accepts[0];
+      if (!state.address) {
+        return { ok: false, status: 402, needWallet: true, accept, price_usdc: fmtUsdcAtomic(accept.maxAmountRequired),
+          error: "Payment required (x402). Connect a wallet to pay " + fmtUsdcAtomic(accept.maxAmountRequired) + " USDC and run." };
+      }
+      let xPayment;
+      try { xPayment = await buildPayment(accept); }
+      catch (e) { return { ok: false, status: 402, accept, error: "Payment signing failed: " + (e && e.message || e) }; }
+
+      let env2;
+      try { env2 = await postCall(url, inputs, xPayment); }
+      catch (e) { return { ok: false, status: 0, error: "Network error settling payment: " + (e && e.message || e) }; }
+      return {
+        ok: env2.status >= 200 && env2.status < 300,
+        status: env2.status,
+        data: env2.body,
+        paid: env2.status >= 200 && env2.status < 300,
+        accept,
+        price_usdc: fmtUsdcAtomic(accept.maxAmountRequired),
+        payment: decodePaymentResponse(env2.headers && env2.headers["x-payment-response"]),
+        error: env2.status >= 200 && env2.status < 300 ? null : "Settlement returned " + env2.status,
+      };
+    }
+
+    return {
+      ok: env.status >= 200 && env.status < 300,
+      status: env.status,
+      data: env.body,
+      error: env.status >= 200 && env.status < 300 ? null : (env.body && env.body.error) ? env.body.error : "Tool returned " + env.status,
+    };
+  }
+
+  window.ATI = {
+    connect, refresh, ensureChain, subscribe, getState, runTool,
+    hasProvider, fmtUsdcAtomic, NETWORKS,
+  };
+
+  // Pick up an already-authorized session on load (no popup).
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", refresh);
+  } else {
+    refresh();
+  }
+})();

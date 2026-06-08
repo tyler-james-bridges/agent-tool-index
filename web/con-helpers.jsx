@@ -4,6 +4,10 @@ const { useState, useEffect, useRef, useCallback, createContext, useContext, use
 const REG = window.REGISTRY;
 const ZERO = "0x0000000000000000000000000000000000000000";
 
+// Tool ids are only unique per chain, so derive a globally-unique uid for React
+// keys, open-state, and DOM hooks. Deep-link URLs stay numeric (/tools/{id}).
+REG.tools.forEach((t) => { t.uid = (t.chain_id || 8453) + "-" + t.id; });
+
 const CHAIN_NAMES = {1: "Ethereum", 8453: "Base", 2741: "Abstract"};
 function chainName(id) { return CHAIN_NAMES[id] || "Chain " + id; }
 

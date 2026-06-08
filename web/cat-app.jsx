@@ -43,13 +43,15 @@ const PILLS = [
 const EXAMPLES = ["appraise an nft", "scan a wallet for risk", "resolve an ens name", "token burn stats"];
 
 // Deep links: /tools/{id} opens that tool directly (Vercel rewrites it to index.html).
-function toolIdFromPath() {
+// openId tracks a tool uid; the URL stays numeric and resolves to the first match.
+function uidFromPath() {
   const m = window.location.pathname.match(/^\/tools\/(\d+)/);
   if (!m) return null;
   const id = parseInt(m[1], 10);
-  return REG.tools.some((t) => t.id === id) ? id : null;
+  const t = REG.tools.find((x) => x.id === id);
+  return t ? t.uid : null;
 }
-const INITIAL_TOOL = toolIdFromPath();
+const INITIAL_TOOL = uidFromPath();
 
 function LensSwitch({ lens, setLens }) {
   const wrap = useR(null);
@@ -102,11 +104,15 @@ function App() {
   const [callableOnly, setCallableOnly] = useS(false);
   const [sort, setSort] = useS({ field: "id", dir: "asc" });
   const [chain, setChain] = useS(null);              // null = all chains
-  const [domain, setDomain] = useS(INITIAL_TOOL != null ? domainOf(REG.tools.find((t) => t.id === INITIAL_TOOL)) : null);  // null = browse all domains
+  const [domain, setDomain] = useS(INITIAL_TOOL != null ? domainOf(REG.tools.find((t) => t.uid === INITIAL_TOOL)) : null);  // null = browse all domains
   const [openId, setOpenId] = useS(INITIAL_TOOL);
   const [ctx, setCtx] = useS({ wallet: false, x402: true, auth: false, budget: 1.0 });
   const [theme, setTheme] = useS(initialTheme);
   const inputRef = useR(null);
+
+  // A real connected wallet drives the planner's caller context.
+  const wallet = useWallet();
+  useE(() => { if (wallet.address) setCtx((c) => (c.wallet ? c : { ...c, wallet: true })); }, [wallet.address]);
 
   useE(() => { document.documentElement.setAttribute("data-theme", theme); }, [theme]);
   // Deep-link: scroll to the initially opened card after first render.
@@ -122,16 +128,17 @@ function App() {
 
   // Keep the URL in sync with the open tool so it is shareable / reload-safe.
   useE(() => {
-    const path = openId != null ? "/tools/" + openId : "/";
-    if (window.location.pathname !== path) window.history.pushState({ openId }, "", path);
+    const t = openId != null ? REG.tools.find((x) => x.uid === openId) : null;
+    const path = t ? "/tools/" + t.id : "/";
+    if (window.location.pathname !== path) window.history.replaceState({ openId }, "", path);
   }, [openId]);
 
   // Back/forward navigation reopens (or closes) the matching tool.
   useE(() => {
     function onPop() {
-      const id = toolIdFromPath();
-      setOpenId(id);
-      if (id != null) { const t = REG.tools.find((x) => x.id === id); if (t) setDomain(domainOf(t)); }
+      const uid = uidFromPath();
+      setOpenId(uid);
+      if (uid != null) { const t = REG.tools.find((x) => x.uid === uid); if (t) setDomain(domainOf(t)); }
     }
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -171,13 +178,8 @@ function App() {
     })).filter((s) => s.items.length);
   }, [browseMode, filtered]);
 
-  function toggleCard(id) {
-    setOpenId((cur) => {
-      const next = cur === id ? null : id;
-      const path = next ? "/tools/" + next : "/";
-      if (location.pathname !== path) history.replaceState(null, "", path);
-      return next;
-    });
+  function toggleCard(uid) {
+    setOpenId((cur) => (cur === uid ? null : uid));
   }
   function resetAll() { setQ(""); setCallableOnly(false); setDomain(null); setChain(null); }
   function pickDomain(k) { setDomain(k); setQ(""); setCallableOnly(false); window.scrollTo({ top: 0 }); }
@@ -206,6 +208,7 @@ function App() {
               {q.trim() && <button className="clr" onClick={() => setQ("")}>clear</button>}
             </div>
             <LensSwitch lens={lens} setLens={setLens} />
+            <WalletButton />
             <button className="thbtn" onClick={flipTheme}
               aria-label={theme === "ink" ? "Switch to light mode" : "Switch to dark mode"}
               title={theme === "ink" ? "Light mode" : "Dark mode"}>
@@ -277,8 +280,8 @@ function App() {
                   </div>
                   <div className="shelf-cards">
                     {preview.map((t) => (
-                      <CapabilityCard key={t.id} t={t} ctx={ctx}
-                        open={openId === t.id} onToggle={() => toggleCard(t.id)} onTag={(tg) => setQ(toggleToken(q, "#" + tg))} />
+                      <CapabilityCard key={t.uid} t={t} ctx={ctx}
+                        open={openId === t.uid} onToggle={() => toggleCard(t.uid)} onTag={(tg) => setQ(toggleToken(q, "#" + tg))} />
                     ))}
                   </div>
                   {rest > 0 && (
@@ -297,8 +300,8 @@ function App() {
                 <button className="reset" onClick={resetAll}>Reset the view</button>
               </div>
             ) : filtered.map((t) => (
-              <CapabilityCard key={t.id} t={t} ctx={ctx}
-                open={openId === t.id} onToggle={() => toggleCard(t.id)} onTag={(tg) => setQ(toggleToken(q, "#" + tg))} />
+              <CapabilityCard key={t.uid} t={t} ctx={ctx}
+                open={openId === t.uid} onToggle={() => toggleCard(t.uid)} onTag={(tg) => setQ(toggleToken(q, "#" + tg))} />
             ))}
           </div>
         )}

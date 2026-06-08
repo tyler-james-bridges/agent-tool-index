@@ -12,14 +12,26 @@ Visual and agent-readable index for ERC-8257 tools across Ethereum, Base, and Ab
 - /llms.txt (this file)
 - /registry-data.js (current snapshot as window.REGISTRY)
 
-## API (requires Rust server)
+## API (live in production)
 
-- GET /api/tools - list all indexed tools
+Base URL: https://agenttoolindex.xyz
+
+- GET /api/tools - list indexed tools (filters: q, status, access, x402, limit)
 - GET /api/tools/{tool_id} - single tool record
 - POST /api/tools/{tool_id}/can_call - plan whether a caller can invoke a tool
-- POST /api/resolve - resolve intent/filter criteria to candidate tools
+- GET|POST /api/resolve - resolve intent/filter criteria to candidate tools
 - GET /api/stats - index statistics
+- POST /api/call - invoke a registered tool endpoint (handles the x402 flow)
 - GET /openapi.json - OpenAPI 3.1 schema
+
+## Invoking Tools (/api/call)
+
+POST /api/call with {"url": <tool endpoint>, "body": <inputs>}. The host must be in
+the registry. A paid tool returns an envelope with status 402 and an `accepts` array
+(x402 v1 "exact" scheme). To settle, sign an EIP-3009 transferWithAuthorization for the
+USDC `asset` to `payTo` for `maxAmountRequired`, base64-encode the x402 payment payload,
+and resend the same request with an `X-PAYMENT` header (or `xPayment` in the body).
+Free tools return status 200 with the result directly.
 
 ## Tool Records
 

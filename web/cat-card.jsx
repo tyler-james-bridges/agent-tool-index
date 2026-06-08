@@ -111,6 +111,8 @@ function AgentLens({ t, ctx, push }) {
       <CodeBlock verb="invoke" endpoint={ep || "endpoint.invalid"}
         html={hlInvoke(inv)} raw={inv} push={push} />
 
+      <RunPanel t={t} />
+
       {/* integrity hashes */}
       <div className="agentnote">
         <span className="d">integrity</span>
@@ -141,7 +143,7 @@ function CapabilityCard({ t, ctx, open, onToggle, onTag }) {
   }
 
   return (
-    <div className="card" data-open={open} data-dereg={dereg} data-tool-id={t.id}>
+    <div className="card" data-open={open} data-dereg={dereg} data-tool-id={t.uid}>
       <button className="chead" onClick={onToggle} aria-expanded={open}>
         <span className="cverdict">
           <span className={"vdot " + plan.status} />
@@ -175,6 +177,8 @@ function CapabilityCard({ t, ctx, open, onToggle, onTag }) {
         <div className="cbody">
           <div className="cbody-in">
             <HumanLens t={t} ctx={ctx} push={push} />
+
+            <RunPanel t={t} />
 
             <div className="cfoot">
               <button className="cact primary" disabled={plan.status === "blocked"} onClick={(e) => { e.stopPropagation(); copyText(invokeSnippet(t)); push("Copied invocation for " + t.name); }}>
@@ -211,7 +215,7 @@ function AgentRow({ t, ctx, open, onToggle }) {
   const price = t.has_x402 ? (p != null ? p : "metered") : "0";
 
   return (
-    <div className="arowwrap" data-open={open} data-tool-id={t.id}>
+    <div className="arowwrap" data-open={open} data-tool-id={t.uid}>
       <button className="arow" onClick={onToggle} aria-expanded={open}>
         <span className="aid">{String(t.id).padStart(2, "0")}</span>
         <span className="aname" data-dereg={t.status === "deregistered"}>{t.name}</span>
@@ -238,7 +242,7 @@ function AgentTable({ tools, ctx, openId, onToggle }) {
       {tools.length === 0 ? (
         <div className="anone">0 records match the current query and filters</div>
       ) : tools.map((t) => (
-        <AgentRow key={t.id} t={t} ctx={ctx} open={openId === t.id} onToggle={() => onToggle(t.id)} />
+        <AgentRow key={t.uid} t={t} ctx={ctx} open={openId === t.uid} onToggle={() => onToggle(t.uid)} />
       ))}
     </div>
   );

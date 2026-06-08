@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt">
 <script>
 /* Set the theme before first paint so a refresh never flashes the wrong palette.
@@ -471,6 +472,50 @@ main.wrap{padding-top:18px;}
   .cact:last-child{border-bottom:0;}
   .codeblock pre{font-size:12.5px;}
 }
+
+/* ============================================================ wallet + run */
+.walletbtn{flex:0 0 auto;display:flex;align-items:center;gap:8px;height:40px;padding:0 14px;border:1px solid var(--hair-2);
+  background:var(--card);font-family:"IBM Plex Mono",monospace;font-size:12.5px;font-weight:600;letter-spacing:.02em;
+  text-transform:uppercase;color:var(--ink-soft);transition:border-color .15s,color .15s;}
+.walletbtn:hover{border-color:var(--accent);color:var(--ink);}
+.walletbtn:disabled{opacity:.6;cursor:default;}
+.walletbtn[data-on="true"]{border-color:var(--accent);color:var(--ink);}
+.walletbtn .wdot{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px color-mix(in oklab,var(--ok) 22%,transparent);}
+.walletbtn .wdot.off{background:var(--faint);box-shadow:none;}
+.walletbtn .waddr{font-weight:700;}
+.walletbtn .wnet{font-size:10px;color:var(--faint);padding-left:2px;}
+[data-lens="agent"] .walletbtn[data-on="true"]{border-color:var(--accent);}
+
+.runpanel{margin-top:18px;border:1px solid var(--hair-2);background:var(--card-sunk);padding:16px;}
+.run-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;}
+.run-dh{font-family:"IBM Plex Mono",monospace;text-transform:uppercase;letter-spacing:.14em;font-size:11px;font-weight:600;color:var(--muted);}
+.run-cost{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--accent-ink);background:var(--accent-soft);padding:3px 8px;border-radius:0;}
+.run-cost.warn{color:var(--warn);background:color-mix(in oklab,var(--warn) 12%,var(--card));}
+.run-fields{display:grid;gap:10px;margin-bottom:12px;}
+.run-field{display:flex;flex-direction:column;gap:4px;}
+.rf-name{font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:600;color:var(--ink-soft);}
+.rf-req{color:var(--bad);padding-left:2px;}
+.rf-opt{color:var(--faint);font-weight:400;}
+.rf-input{border:1px solid var(--hair-2);background:var(--card);padding:9px 11px;font-size:14px;font-family:"IBM Plex Mono",monospace;}
+.rf-input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
+.run-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+.run-go{display:inline-flex;align-items:center;gap:9px;background:var(--accent);color:var(--on-accent);padding:12px 20px;
+  font-family:"IBM Plex Mono",monospace;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border:1px solid var(--accent);transition:filter .15s;}
+.run-go:hover:not(:disabled){filter:brightness(1.08);}
+.run-go:disabled{opacity:.5;cursor:default;}
+.run-go svg{width:15px;height:15px;}
+.run-hint,.rr-note{font-size:12px;color:var(--faint);}
+.run-result{margin-top:14px;border:1px solid var(--hair-2);background:var(--code-bg);color:var(--code-ink);}
+.run-result.err{border-color:color-mix(in oklab,var(--bad) 50%,var(--hair-2));}
+.rr-head{display:flex;align-items:center;gap:12px;padding:9px 12px;border-bottom:1px solid color-mix(in oklab,var(--code-ink) 14%,transparent);}
+.rr-status{font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:700;}
+.rr-status.ok{color:var(--ok);}
+.rr-status.err{color:var(--bad);}
+.rr-tx{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--code-ink);text-decoration:none;}
+.rr-tx svg{width:13px;height:13px;}
+.rr-body{margin:0;padding:12px;font-family:"IBM Plex Mono",monospace;font-size:12.5px;line-height:1.5;overflow:auto;max-height:380px;white-space:pre-wrap;word-break:break-word;}
+.rr-body .k{color:#7fb7ff;}.rr-body .s{color:#b5e8a0;}.rr-body .n{color:#e9c46a;}.rr-body .b{color:#f4a261;}
+.rr-note{padding:10px 12px;}
 </style>
 </head>
 <body>
@@ -481,10 +526,12 @@ main.wrap{padding-top:18px;}
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
 
 <script src="/registry-data.js"></script>
+<script src="/wallet.js"></script>
 <script type="text/babel" src="/tweaks-panel.jsx"></script>
 <script type="text/babel" src="/con-helpers.jsx"></script>
 <script type="text/babel" src="/cat-domains.jsx"></script>
 <script type="text/babel" src="/cat-helpers.jsx"></script>
+<script type="text/babel" src="/cat-run.jsx"></script>
 <script type="text/babel" src="/cat-card.jsx"></script>
 <script type="text/babel" src="/cat-app.jsx"></script>
 </body>
