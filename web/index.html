@@ -155,15 +155,18 @@ main.wrap{padding-top:18px;}
 .thbtn:hover{border-color:var(--hair-strong);color:var(--accent-ink);}
 .thbtn svg{width:17px;height:17px;}
 
-/* ---- filter strip: one toolbar — grouped pills left, count+sort right.
-   No wrap on the strip itself: pills wrap inside their own box so the
-   count+sort cluster stays pinned top-right on the same toolbar line. ---- */
-.filterstrip{display:flex;align-items:flex-start;gap:18px;padding-bottom:15px;flex-wrap:nowrap;}
-.pills{display:flex;align-items:center;gap:10px;flex-wrap:wrap;flex:1 1 auto;min-width:0;}
-/* each group of related pills stays together as a cluster when the row wraps */
+/* ---- filter strip: one compact toolbar. Desktop flattens the pill wrapper
+   (display:contents) so the groups (primary · attrs · chains) flow together as
+   one wrapping row across as few lines as fit; the count+sort cluster then
+   pushes to the far right of the LAST row (margin-left:auto), filling the
+   otherwise-empty right side instead of leaving a void on row 1.
+   Mobile (<=760px) re-establishes .pills as a real swipeable flex container. ---- */
+.filterstrip{display:flex;align-items:center;gap:11px 22px;flex-wrap:wrap;padding-bottom:15px;}
+.pills{display:contents;}
+/* each group of related pills stays together as a cluster when the row wraps;
+   groups are set apart by the wider column-gap above plus their own pill styling
+   (primary solid · attrs faint · chains dashed) — no divider rules to dangle on wrap */
 .pgroup{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;}
-/* thin divider between the three control kinds (state | attributes | chains) */
-.pdiv{flex:0 0 auto;width:1px;align-self:stretch;min-height:22px;background:var(--hair-2);margin:0 2px;}
 .pill{font-family:"IBM Plex Mono",monospace;font-size:12.5px;font-weight:500;padding:7px 13px;border-radius:0;border:1px solid var(--hair-2);
   color:var(--ink-soft);background:var(--card);transition:.13s;display:inline-flex;align-items:center;gap:7px;white-space:nowrap;}
 .pill:hover{border-color:var(--hair-strong);}
@@ -179,8 +182,10 @@ main.wrap{padding-top:18px;}
 .pill.sec .ct{opacity:.55;}
 /* chain filters: dotted leader marks them as a different axis (scope, not attribute) */
 .pill.chain{border-style:dashed;}
+/* count+sort: trailing item of the wrapping pill row — margin-left:auto pins it
+   to the right of whatever the last row is, filling the empty chains-row space. */
 .fstrip-r{margin-left:auto;flex:0 0 auto;display:inline-flex;align-items:center;gap:14px;
-  padding-left:18px;border-left:1px solid var(--hair-2);}
+  padding-left:14px;border-left:1px solid var(--hair-2);}
 
 /* ---- domain / category nav ---- */
 .domnav{display:flex;align-items:stretch;gap:8px;padding-bottom:15px;overflow-x:auto;scrollbar-width:none;}
@@ -453,14 +458,13 @@ main.wrap{padding-top:18px;}
 
   /* filters: pills become one swipeable row; count+sort sit on a tidy row below */
   .filterstrip{flex-wrap:wrap;gap:10px;padding-bottom:12px;}
-  .pills{flex-wrap:nowrap;overflow-x:auto;gap:8px;flex:1 1 100%;min-width:0;
+  .pills{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:18px;flex:1 1 100%;min-width:0;
     margin:0 -14px;padding-left:14px;padding-right:14px;scrollbar-width:none;
     -webkit-overflow-scrolling:touch;
     -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);
     mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);}
   .pills::-webkit-scrollbar{display:none;}
-  .pgroup{flex:0 0 auto;flex-wrap:nowrap;}
-  .pdiv{flex:0 0 auto;min-height:30px;}
+  .pgroup{flex:0 0 auto;flex-wrap:nowrap;gap:8px;}  /* groups set apart by the .pills gap above */
   .pill{flex:0 0 auto;min-height:34px;}
   /* count + sort: their own row, count left / sort right, no border seam */
   .fstrip-r{margin-left:0;flex:1 1 100%;justify-content:space-between;gap:10px;

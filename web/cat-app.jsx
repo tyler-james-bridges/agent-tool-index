@@ -242,7 +242,6 @@ function App() {
               </button>
             </span>
             {/* secondary attribute filters (de-emphasized) */}
-            <span className="pdiv" aria-hidden="true" />
             <span className="pgroup attrs">
               {PILLS.map((p) => {
                 const on = q.split(/\s+/).map((s) => s.toLowerCase()).includes(p.key.toLowerCase());
@@ -254,7 +253,6 @@ function App() {
               })}
             </span>
             {/* chain filters (distinct cluster) */}
-            {CHAIN_PILLS.length > 1 && <span className="pdiv" aria-hidden="true" />}
             {CHAIN_PILLS.length > 1 && (
               <span className="pgroup chains">
                 {CHAIN_PILLS.map((cp) => (
