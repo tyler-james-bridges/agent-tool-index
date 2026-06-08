@@ -62,24 +62,36 @@
   }
   function hasProvider() { return listWallets().length > 0; }
 
-  // Every connectable wallet, EIP-6963 first, with injected fallback.
+  function injectedName(prov) {
+    return prov.isMetaMask ? "MetaMask" : prov.isCoinbaseWallet ? "Coinbase Wallet" : prov.isRabby ? "Rabby"
+      : prov.isBraveWallet ? "Brave Wallet" : prov.isTrust ? "Trust Wallet" : prov.isPhantom ? "Phantom" : "Browser Wallet";
+  }
+
+  // Connectable wallets. EIP-6963 is the standard discovery mechanism (the same
+  // one wagmi/RainbowKit use) and supersedes the legacy window.ethereum object —
+  // so we only fall back to window.ethereum when no wallet announces via 6963.
+  // This prevents the same wallet (e.g. MetaMask) from appearing twice.
   function listWallets() {
-    const out = [];
-    const seen = new Set();
+    let out = [];
     discoveredProviders().forEach(({ info, provider: prov }, i) => {
       const key = (info && (info.rdns || info.uuid || info.name)) || ("w" + i);
-      if (seen.has(prov)) return; seen.add(prov);
-      out.push({ key, name: (info && info.name) || "Wallet", icon: (info && info.icon) || null, provider: prov });
+      out.push({ key: key, name: (info && info.name) || injectedName(prov), icon: (info && info.icon) || null, provider: prov, rdns: info && info.rdns });
     });
-    if (window.ethereum) {
+    if (!out.length && window.ethereum) {
       const e = window.ethereum;
       const injected = Array.isArray(e.providers) && e.providers.length ? e.providers : [e];
       injected.forEach((prov, i) => {
-        if (seen.has(prov)) return; seen.add(prov);
-        const name = prov.isMetaMask ? "MetaMask" : prov.isCoinbaseWallet ? "Coinbase Wallet" : prov.isRabby ? "Rabby" : prov.isBraveWallet ? "Brave Wallet" : "Browser Wallet";
-        out.push({ key: "injected-" + i, name: name, icon: null, provider: prov });
+        out.push({ key: "injected-" + i, name: injectedName(prov), icon: null, provider: prov });
       });
     }
+    // De-dupe defensively by provider reference, then by name.
+    const seenP = new Set(), seenN = new Set();
+    out = out.filter((w) => {
+      if (seenP.has(w.provider)) return false; seenP.add(w.provider);
+      const n = (w.rdns || w.name || "").toLowerCase();
+      if (n && seenN.has(n)) return false; if (n) seenN.add(n);
+      return true;
+    });
     return out;
   }
   function walletCount() { return listWallets().length; }
