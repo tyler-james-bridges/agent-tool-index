@@ -1099,4 +1099,605 @@ fn manifest_text(tool: &ToolRecord) -> &'static str {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ZERO_ADDR: &str = "0x0000000000000000000000000000000000000000";
+    // A non-zero predicate address that is not in predicate_label's known list,
+    // so access_label classifies it as "custom".
+    const CUSTOM_ADDR: &str = "0x000000000000000000000000000000000000dEaD";
+
+    fn make_tool() -> ToolRecord {
+        ToolRecord {
+            chain_id: 8453,
+            registry: crate::types::BASE_REGISTRY.to_string(),
+            tool_id: 1,
+            status: ToolStatus::Active,
+            creator: None,
+            metadata_uri: None,
+            manifest_hash: None,
+            access_predicate: Some(ZERO_ADDR.to_string()),
+            predicate_type: "unknown".to_string(),
+            manifest_status: ManifestStatus::Unchecked,
+            computed_manifest_hash: None,
+            name: None,
+            description: None,
+            endpoint: None,
+            tags: Vec::new(),
+            has_x402: false,
+            has_auth: false,
+            error: None,
+            manifest: None,
+            checked_at: Utc::now(),
+        }
+    }
+
+    fn empty_resolve() -> ResolveRequest {
+        ResolveRequest {
+            query: None,
+            status: None,
+            access: None,
+            manifest_status: None,
+            x402: None,
+            limit: None,
+        }
+    }
+
+    fn empty_can_call() -> CanCallRequest {
+        CanCallRequest {
+            wallet: None,
+            budget_usdc: None,
+            allow_x402: None,
+            has_auth: None,
+        }
+    }
+
+    // ---- frontend_tool_name ----
+
+    #[test]
+    fn tool_name_prefers_name() {
+        let mut tool = make_tool();
+        tool.name = Some("Wallet Risk".to_string());
+        tool.metadata_uri = Some("ipfs://x".to_string());
+        assert_eq!(frontend_tool_name(&tool), "Wallet Risk");
+    }
+
+    #[test]
+    fn tool_name_falls_back_to_metadata_uri() {
+        let mut tool = make_tool();
+        tool.name = None;
+        tool.metadata_uri = Some("ipfs://manifest".to_string());
+        assert_eq!(frontend_tool_name(&tool), "ipfs://manifest");
+    }
+
+    #[test]
+    fn tool_name_falls_back_to_tool_id() {
+        let mut tool = make_tool();
+        tool.tool_id = 42;
+        tool.name = None;
+        tool.metadata_uri = None;
+        assert_eq!(frontend_tool_name(&tool), "Tool #42");
+    }
+
+    // ---- frontend_access_label ----
+
+    #[test]
+    fn access_label_open_for_zero_predicate() {
+        let mut tool = make_tool();
+        tool.access_predicate = Some(ZERO_ADDR.to_string());
+        assert_eq!(frontend_access_label(&tool), "open");
+    }
+
+    #[test]
+    fn access_label_unknown_for_no_predicate() {
+        let mut tool = make_tool();
+        tool.access_predicate = None;
+        assert_eq!(frontend_access_label(&tool), "unknown");
+    }
+
+    #[test]
+    fn access_label_custom_for_unknown_nonzero_predicate() {
+        let mut tool = make_tool();
+        tool.access_predicate = Some(CUSTOM_ADDR.to_string());
+        assert_eq!(frontend_access_label(&tool), "custom");
+    }
+
+    // ---- status_text / manifest_text ----
+
+    #[test]
+    fn status_text_maps_each_variant() {
+        let mut tool = make_tool();
+        tool.status = ToolStatus::Active;
+        assert_eq!(status_text(&tool), "active");
+        tool.status = ToolStatus::Deregistered;
+        assert_eq!(status_text(&tool), "deregistered");
+        tool.status = ToolStatus::ReadError;
+        assert_eq!(status_text(&tool), "read_error");
+    }
+
+    #[test]
+    fn manifest_text_maps_each_variant() {
+        let mut tool = make_tool();
+        tool.manifest_status = ManifestStatus::Unchecked;
+        assert_eq!(manifest_text(&tool), "unchecked");
+        tool.manifest_status = ManifestStatus::Verified;
+        assert_eq!(manifest_text(&tool), "verified");
+        tool.manifest_status = ManifestStatus::HashMismatch;
+        assert_eq!(manifest_text(&tool), "hash_mismatch");
+        tool.manifest_status = ManifestStatus::FetchError;
+        assert_eq!(manifest_text(&tool), "fetch_error");
+        tool.manifest_status = ManifestStatus::ParseError;
+        assert_eq!(manifest_text(&tool), "parse_error");
+    }
+
+    // ---- resolve_matches ----
+
+    #[test]
+    fn resolve_matches_no_filters_matches() {
+        assert!(resolve_matches(&make_tool(), &empty_resolve()));
+    }
+
+    #[test]
+    fn resolve_matches_status_filter() {
+        let tool = make_tool(); // Active
+        let mut req = empty_resolve();
+        req.status = Some("active".to_string());
+        assert!(resolve_matches(&tool, &req));
+        req.status = Some("deregistered".to_string());
+        assert!(!resolve_matches(&tool, &req));
+    }
+
+    #[test]
+    fn resolve_matches_access_filter() {
+        let tool = make_tool(); // zero predicate -> "open"
+        let mut req = empty_resolve();
+        req.access = Some("open".to_string());
+        assert!(resolve_matches(&tool, &req));
+        req.access = Some("custom".to_string());
+        assert!(!resolve_matches(&tool, &req));
+    }
+
+    #[test]
+    fn resolve_matches_manifest_status_filter() {
+        let mut tool = make_tool();
+        tool.manifest_status = ManifestStatus::Verified;
+        let mut req = empty_resolve();
+        req.manifest_status = Some("verified".to_string());
+        assert!(resolve_matches(&tool, &req));
+        req.manifest_status = Some("unchecked".to_string());
+        assert!(!resolve_matches(&tool, &req));
+    }
+
+    #[test]
+    fn resolve_matches_x402_filter() {
+        let mut tool = make_tool();
+        tool.has_x402 = true;
+        let mut req = empty_resolve();
+        req.x402 = Some(true);
+        assert!(resolve_matches(&tool, &req));
+        req.x402 = Some(false);
+        assert!(!resolve_matches(&tool, &req));
+    }
+
+    #[test]
+    fn resolve_matches_query_requires_all_terms() {
+        let mut tool = make_tool();
+        tool.name = Some("Wallet Risk Scanner".to_string());
+        let mut req = empty_resolve();
+        req.query = Some("wallet risk".to_string());
+        assert!(resolve_matches(&tool, &req));
+        req.query = Some("wallet missing".to_string());
+        assert!(!resolve_matches(&tool, &req));
+    }
+
+    #[test]
+    fn resolve_matches_empty_query_matches() {
+        let mut req = empty_resolve();
+        req.query = Some("   ".to_string());
+        assert!(resolve_matches(&make_tool(), &req));
+    }
+
+    // ---- resolve_score ----
+
+    #[test]
+    fn resolve_score_active_bonus() {
+        let tool = make_tool(); // Active, Unchecked
+        assert_eq!(resolve_score(&tool, None), 10);
+    }
+
+    #[test]
+    fn resolve_score_inactive_no_bonus() {
+        let mut tool = make_tool();
+        tool.status = ToolStatus::Deregistered;
+        assert_eq!(resolve_score(&tool, None), 0);
+    }
+
+    #[test]
+    fn resolve_score_verified_bonus() {
+        let mut tool = make_tool();
+        tool.manifest_status = ManifestStatus::Verified;
+        assert_eq!(resolve_score(&tool, None), 15);
+    }
+
+    #[test]
+    fn resolve_score_adds_matching_query_terms() {
+        let mut tool = make_tool();
+        tool.name = Some("Wallet Risk".to_string());
+        tool.manifest_status = ManifestStatus::Verified;
+        // 10 active + 5 verified + 2 matching terms
+        assert_eq!(resolve_score(&tool, Some("wallet risk")), 17);
+        // only one term matches
+        assert_eq!(resolve_score(&tool, Some("wallet nope")), 16);
+    }
+
+    // ---- pricing_amount_usdc ----
+
+    #[test]
+    fn pricing_none_without_manifest() {
+        let tool = make_tool();
+        assert_eq!(pricing_amount_usdc(&tool), None);
+    }
+
+    #[test]
+    fn pricing_none_when_no_pricing_field() {
+        let mut tool = make_tool();
+        tool.manifest = Some(json!({ "name": "x" }));
+        assert_eq!(pricing_amount_usdc(&tool), None);
+    }
+
+    #[test]
+    fn pricing_float_below_threshold_passes_through() {
+        let mut tool = make_tool();
+        tool.manifest = Some(json!({ "pricing": [{ "amount": 0.5 }] }));
+        assert_eq!(pricing_amount_usdc(&tool), Some(0.5));
+    }
+
+    #[test]
+    fn pricing_microdollars_are_normalized() {
+        let mut tool = make_tool();
+        tool.manifest = Some(json!({ "pricing": [{ "amount": 2_000_000.0 }] }));
+        assert_eq!(pricing_amount_usdc(&tool), Some(2.0));
+    }
+
+    #[test]
+    fn pricing_string_amount_parsed() {
+        let mut tool = make_tool();
+        tool.manifest = Some(json!({ "pricing": [{ "amount": "0.25" }] }));
+        assert_eq!(pricing_amount_usdc(&tool), Some(0.25));
+    }
+
+    #[test]
+    fn pricing_string_microdollars_normalized() {
+        let mut tool = make_tool();
+        tool.manifest = Some(json!({ "pricing": [{ "amount": "5000000" }] }));
+        assert_eq!(pricing_amount_usdc(&tool), Some(5.0));
+    }
+
+    #[test]
+    fn pricing_threshold_boundary_stays() {
+        let mut tool = make_tool();
+        tool.manifest = Some(json!({ "pricing": [{ "amount": 1000.0 }] }));
+        assert_eq!(pricing_amount_usdc(&tool), Some(1000.0));
+    }
+
+    // ---- manifest_inputs ----
+
+    #[test]
+    fn inputs_empty_without_manifest() {
+        assert!(manifest_inputs(&make_tool()).is_empty());
+    }
+
+    #[test]
+    fn inputs_from_objects() {
+        let mut tool = make_tool();
+        tool.manifest = Some(json!({
+            "inputs": [{ "name": "addr", "type": "string", "required": true, "description": "wallet" }]
+        }));
+        let inputs = manifest_inputs(&tool);
+        assert_eq!(inputs.len(), 1);
+        assert_eq!(inputs[0]["name"], "addr");
+        assert_eq!(inputs[0]["type"], "string");
+        assert_eq!(inputs[0]["required"], true);
+        assert_eq!(inputs[0]["description"], "wallet");
+    }
+
+    #[test]
+    fn inputs_from_strings() {
+        let mut tool = make_tool();
+        tool.manifest = Some(json!({ "inputs": ["foo"] }));
+        let inputs = manifest_inputs(&tool);
+        assert_eq!(inputs[0]["name"], "foo");
+        assert_eq!(inputs[0]["type"], "string");
+        assert_eq!(inputs[0]["required"], true);
+    }
+
+    #[test]
+    fn inputs_object_without_name_uses_positional_fallback() {
+        let mut tool = make_tool();
+        tool.manifest = Some(json!({ "inputs": [{ "type": "number" }] }));
+        let inputs = manifest_inputs(&tool);
+        assert_eq!(inputs[0]["name"], "input1");
+        assert_eq!(inputs[0]["type"], "number");
+        assert_eq!(inputs[0]["required"], false);
+    }
+
+    #[test]
+    fn inputs_from_parameters_array() {
+        let mut tool = make_tool();
+        tool.manifest = Some(json!({ "parameters": [{ "name": "q" }] }));
+        let inputs = manifest_inputs(&tool);
+        assert_eq!(inputs[0]["name"], "q");
+        assert_eq!(inputs[0]["type"], "object");
+    }
+
+    #[test]
+    fn inputs_from_input_schema_properties() {
+        let mut tool = make_tool();
+        tool.manifest = Some(json!({
+            "inputSchema": {
+                "properties": { "q": { "type": "string", "description": "query" } },
+                "required": ["q"]
+            }
+        }));
+        let inputs = manifest_inputs(&tool);
+        assert_eq!(inputs.len(), 1);
+        assert_eq!(inputs[0]["name"], "q");
+        assert_eq!(inputs[0]["type"], "string");
+        assert_eq!(inputs[0]["required"], true);
+        assert_eq!(inputs[0]["description"], "query");
+    }
+
+    // ---- manifest_outputs ----
+
+    #[test]
+    fn outputs_empty_without_manifest() {
+        assert!(manifest_outputs(&make_tool()).is_empty());
+    }
+
+    #[test]
+    fn outputs_from_strings() {
+        let mut tool = make_tool();
+        tool.manifest = Some(json!({ "outputs": ["result", "score"] }));
+        assert_eq!(manifest_outputs(&tool), vec!["result", "score"]);
+    }
+
+    #[test]
+    fn outputs_from_objects() {
+        let mut tool = make_tool();
+        tool.manifest = Some(json!({ "outputs": [{ "name": "out1" }] }));
+        assert_eq!(manifest_outputs(&tool), vec!["out1"]);
+    }
+
+    #[test]
+    fn outputs_from_returns_array() {
+        let mut tool = make_tool();
+        tool.manifest = Some(json!({ "returns": ["r"] }));
+        assert_eq!(manifest_outputs(&tool), vec!["r"]);
+    }
+
+    #[test]
+    fn outputs_from_output_schema_properties() {
+        let mut tool = make_tool();
+        tool.manifest = Some(json!({
+            "outputSchema": { "properties": { "alpha": {}, "beta": {} } }
+        }));
+        // serde_json default map is sorted, so keys are deterministic.
+        assert_eq!(manifest_outputs(&tool), vec!["alpha", "beta"]);
+    }
+
+    // ---- can_call_plan ----
+
+    #[test]
+    fn can_call_open_active_is_callable() {
+        let plan = can_call_plan(&make_tool(), &empty_can_call());
+        assert_eq!(plan["status"], "callable");
+        assert_eq!(plan["toolId"], 1);
+        assert_eq!(plan["method"], "POST");
+        assert!(plan["blockers"].as_array().unwrap().is_empty());
+        assert_eq!(plan["priceUsdc"], Value::Null);
+    }
+
+    #[test]
+    fn can_call_inactive_is_not_callable() {
+        let mut tool = make_tool();
+        tool.status = ToolStatus::Deregistered;
+        let plan = can_call_plan(&tool, &empty_can_call());
+        assert_eq!(plan["status"], "not_callable");
+        let blockers = plan["blockers"].as_array().unwrap();
+        assert!(blockers.iter().any(|b| b == "tool is not active in the registry"));
+    }
+
+    #[test]
+    fn can_call_auth_is_conditional() {
+        let mut tool = make_tool();
+        tool.has_auth = true;
+        let plan = can_call_plan(&tool, &empty_can_call());
+        assert_eq!(plan["status"], "conditional");
+        let reqs = plan["requirements"].as_array().unwrap();
+        assert!(reqs.iter().any(|r| r == "manifest declares authentication requirements"));
+    }
+
+    #[test]
+    fn can_call_x402_disallowed_is_blocked() {
+        let mut tool = make_tool();
+        tool.has_x402 = true;
+        let mut req = empty_can_call();
+        req.allow_x402 = Some(false);
+        let plan = can_call_plan(&tool, &req);
+        assert_eq!(plan["status"], "not_callable");
+        let blockers = plan["blockers"].as_array().unwrap();
+        assert!(blockers.iter().any(|b| b == "caller does not allow x402 payments"));
+    }
+
+    #[test]
+    fn can_call_x402_budget_below_price_is_blocked() {
+        let mut tool = make_tool();
+        tool.has_x402 = true;
+        tool.manifest = Some(json!({ "pricing": [{ "amount": 0.5 }] }));
+        let mut req = empty_can_call();
+        req.budget_usdc = Some(0.1);
+        req.allow_x402 = Some(true);
+        let plan = can_call_plan(&tool, &req);
+        assert_eq!(plan["status"], "not_callable");
+        assert_eq!(plan["priceUsdc"], 0.5);
+        let blockers = plan["blockers"].as_array().unwrap();
+        assert!(blockers.iter().any(|b| b.as_str().unwrap().contains("below price")));
+    }
+
+    #[test]
+    fn can_call_x402_within_budget_is_callable() {
+        let mut tool = make_tool();
+        tool.has_x402 = true;
+        tool.manifest = Some(json!({ "pricing": [{ "amount": 0.5 }] }));
+        let mut req = empty_can_call();
+        req.budget_usdc = Some(5.0);
+        req.allow_x402 = Some(true);
+        let plan = can_call_plan(&tool, &req);
+        assert_eq!(plan["status"], "callable");
+        let reqs = plan["requirements"].as_array().unwrap();
+        assert!(reqs.iter().any(|r| r == "x402 payment required or accepted"));
+    }
+
+    // ---- erc_label ----
+
+    #[test]
+    fn erc_label_draft_without_manifest() {
+        assert_eq!(erc_label(&make_tool()), "draft");
+    }
+
+    #[test]
+    fn erc_label_strips_erc_prefix() {
+        let mut tool = make_tool();
+        tool.manifest = Some(json!({ "erc": "ERC-8257" }));
+        assert_eq!(erc_label(&tool), "8257");
+    }
+
+    #[test]
+    fn erc_label_from_standard_lowercase_prefix() {
+        let mut tool = make_tool();
+        tool.manifest = Some(json!({ "standard": "erc-721" }));
+        assert_eq!(erc_label(&tool), "721");
+    }
+
+    #[test]
+    fn erc_label_from_spec_field() {
+        let mut tool = make_tool();
+        tool.manifest = Some(json!({ "spec": "8004" }));
+        assert_eq!(erc_label(&tool), "8004");
+    }
+
+    #[test]
+    fn erc_label_from_tags_when_no_field() {
+        let mut tool = make_tool();
+        tool.tags = vec!["ERC-8257".to_string()];
+        tool.manifest = Some(json!({ "name": "x" }));
+        assert_eq!(erc_label(&tool), "8257");
+    }
+
+    #[test]
+    fn erc_label_defaults_to_draft() {
+        let mut tool = make_tool();
+        tool.manifest = Some(json!({ "name": "x" }));
+        assert_eq!(erc_label(&tool), "draft");
+    }
+
+    // ---- invocation_hint ----
+
+    #[test]
+    fn invocation_hint_inactive() {
+        let mut tool = make_tool();
+        tool.status = ToolStatus::ReadError;
+        assert_eq!(
+            invocation_hint(&tool),
+            "Not callable: this tool ID is not active in the registry."
+        );
+    }
+
+    #[test]
+    fn invocation_hint_x402() {
+        let mut tool = make_tool();
+        tool.endpoint = Some("https://api.example.com".to_string());
+        tool.has_x402 = true;
+        assert_eq!(
+            invocation_hint(&tool),
+            "Call https://api.example.com; expect HTTP 402/x402 payment requirements before success."
+        );
+    }
+
+    #[test]
+    fn invocation_hint_auth_only() {
+        let mut tool = make_tool();
+        tool.endpoint = Some("https://api.example.com".to_string());
+        tool.has_auth = true;
+        assert_eq!(
+            invocation_hint(&tool),
+            "Call https://api.example.com; manifest declares authentication requirements."
+        );
+    }
+
+    #[test]
+    fn invocation_hint_open() {
+        let mut tool = make_tool();
+        tool.endpoint = Some("https://api.example.com".to_string());
+        assert_eq!(
+            invocation_hint(&tool),
+            "Call https://api.example.com directly with JSON matching the input schema."
+        );
+    }
+
+    #[test]
+    fn invocation_hint_missing_endpoint() {
+        let tool = make_tool(); // active, no endpoint, open
+        assert_eq!(
+            invocation_hint(&tool),
+            "Call manifest has no endpoint directly with JSON matching the input schema."
+        );
+    }
+
+    // ---- fallback_snapshot ----
+
+    #[test]
+    fn fallback_snapshot_parses_baked_registry() {
+        let snapshot = fallback_snapshot().expect("baked registry parses");
+        assert_eq!(snapshot.chain_id, 8453);
+        assert!(!snapshot.tools.is_empty());
+        // The tool_count field and parsed tools array must agree.
+        assert_eq!(snapshot.tool_count as usize, snapshot.tools.len());
+    }
+
+    // ---- frontend_registry ----
+
+    #[test]
+    fn frontend_registry_enriches_chains_and_tools() {
+        let mut tool = make_tool();
+        tool.tool_id = 9;
+        tool.name = Some("Indexer".to_string());
+        let snapshot = Snapshot {
+            chain_id: 8453,
+            registry: crate::types::BASE_REGISTRY.to_string(),
+            tool_count: 1,
+            synced_at: Utc::now(),
+            tools: vec![tool],
+        };
+
+        let registry = frontend_registry(&snapshot);
+        assert_eq!(registry["chain_id"], 8453);
+        assert_eq!(registry["tool_count"], 1);
+
+        let chains = registry["chains"].as_array().unwrap();
+        assert_eq!(chains.len(), 3);
+        // Base is the second configured chain and holds the single tool.
+        assert_eq!(chains[1]["name"], "Base");
+        assert_eq!(chains[1]["tool_count"], 1);
+
+        let tools = registry["tools"].as_array().unwrap();
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0]["id"], 9);
+        assert_eq!(tools[0]["name"], "Indexer");
+        assert_eq!(tools[0]["status"], "active");
+        assert_eq!(tools[0]["access"], "open");
+    }
+}
+
 
