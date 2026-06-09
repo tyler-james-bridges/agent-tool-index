@@ -34,6 +34,17 @@ module.exports = function handler(req, res) {
           requestBody: { content: { "application/json": { schema: { type: "object", properties: { wallet: { type: "string" }, budget_usdc: { type: "number" }, allow_x402: { type: "boolean" }, has_auth: { type: "boolean" } } } } } },
         },
       },
+      "/api/verify/{chain_id}/{tool_id}": {
+        get: {
+          summary: "Live trust/verification report for a tool",
+          description:
+            "Combines the keccak-verified registry snapshot with two live probes: an HTTP liveness check of the tool endpoint and a raw eth_call to the onchain registry getToolConfig(uint256).",
+          parameters: [
+            { name: "chain_id", in: "path", required: true, schema: { type: "integer" } },
+            { name: "tool_id", in: "path", required: true, schema: { type: "integer" } },
+          ],
+        },
+      },
       "/api/resolve": {
         get: { summary: "Resolve usage help" },
         post: { summary: "Resolve intent to candidate tools", requestBody: { content: { "application/json": { schema: { type: "object", properties: { query: { type: "string" }, status: { type: "string" }, access: { type: "string" }, manifest_status: { type: "string" }, x402: { type: "boolean" }, limit: { type: "integer" } } } } } } },

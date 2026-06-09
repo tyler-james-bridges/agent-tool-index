@@ -53,6 +53,7 @@ All API routes require the Rust server (`cargo run -- serve`).
 | `/api/tools` | GET | List all indexed tools |
 | `/api/tools/{id}` | GET | Single tool record |
 | `/api/tools/{id}/can_call` | POST | Plan whether a caller can invoke a tool |
+| `/api/verify/{chain_id}/{tool_id}` | GET | Live trust report: snapshot + endpoint liveness + onchain eth_call |
 | `/api/resolve` | POST | Resolve intent/filter criteria to candidate tools |
 | `/api/stats` | GET | Index statistics |
 | `/api/sync` | POST | Trigger a live registry sync |
