@@ -333,11 +333,20 @@ function App() {
         )}
 
         <footer className="pagefoot">
+          <div className="foot-row">
           <span className="mono">{short(REG.registry, 6)}</span>
           <span>{(REG.chains || []).map((c) => c.name || chainName(c.chain_id)).join(" \u00b7 ") || "Base \u00b7 8453"}</span>
           <span>{STAT.active} active · {STAT.verified} verified · synced {relTime(REG.synced_at)} ago</span>
           <a href="/llms.txt">llms.txt</a>
           <span style={{ marginLeft: "auto" }}>Read this index as a human, or as your agent does.</span>
+          </div>
+          <div className="foot-row stamp">
+            <a className="foot-soc" href="https://github.com/tyler-james-bridges/agent-tool-index" target="_blank" rel="noopener noreferrer">{Ico.github} Source</a>
+            <a className="foot-soc" href="https://x.com/tmoney_145" target="_blank" rel="noopener noreferrer">{Ico.x} @tmoney_145</a>
+            <a className="foot-soc" href="https://www.linkedin.com/in/tyler-james-bridges-4344abab" target="_blank" rel="noopener noreferrer">{Ico.linkedin} LinkedIn</a>
+            <a className="foot-soc" href="https://tylerjb.dev" target="_blank" rel="noopener noreferrer">{Ico.ext} tylerjb.dev</a>
+            <span className="foot-by">Built by <b>Tyler James-Bridges</b> with Claude Code</span>
+          </div>
         </footer>
       </main>
 
