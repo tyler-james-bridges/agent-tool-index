@@ -18,6 +18,11 @@ jobs:
         run: cargo run --release -- sync
       - name: Export static snapshot
         run: cargo run --release -- export-static
+      - name: Validate exported snapshot
+        # The suite parses web/registry-data.js and asserts it is internally
+        # consistent (chain id, tool_count == tools.len(), non-empty). A bad
+        # sync fails here, before the commit, so it never reaches prod.
+        run: cargo test --release
       - name: Check for changes
         id: diff
         run: |
