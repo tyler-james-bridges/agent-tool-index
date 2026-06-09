@@ -1,0 +1,76 @@
+{
+  "type": "https://ercs.ethereum.org/ERCS/erc-8257#tool-manifest-v1",
+  "name": "verify-tool",
+  "description": "Verifies any ERC-8257 tool. Given a chain_id and tool_id, it reads the tool's onchain registry config, confirms the manifest hash matches the hosted manifest, probes whether the tool's endpoint is live, decodes access predicate and x402 payment requirements, and returns a trust report with a callable verdict. A public-good verification primitive for agents vetting tools before they call them.",
+  "endpoint": "https://agenttoolindex.xyz/api/verify",
+  "method": "GET",
+  "tags": [
+    "erc-8257",
+    "verification",
+    "trust",
+    "registry",
+    "agent-tools",
+    "base"
+  ],
+  "creatorAddress": "0xa102a2cb8aac6c7d2c477412ebb7d41d0ce53495",
+  "inputs": {
+    "type": "object",
+    "properties": {
+      "chain_id": {
+        "type": "integer",
+        "description": "EVM chain id of the registry to verify against. Supported: 1 (Ethereum), 8453 (Base), 2741 (Abstract).",
+        "enum": [1, 8453, 2741]
+      },
+      "tool_id": {
+        "type": "integer",
+        "description": "The ERC-8257 tool id to verify.",
+        "minimum": 1
+      }
+    },
+    "required": ["chain_id", "tool_id"],
+    "additionalProperties": false
+  },
+  "outputs": {
+    "type": "object",
+    "properties": {
+      "chain_id": { "type": "integer" },
+      "chain_name": { "type": "string" },
+      "tool_id": { "type": "integer" },
+      "status": {
+        "type": "string",
+        "enum": ["active", "deregistered", "read_error"]
+      },
+      "manifest_status": {
+        "type": "string",
+        "enum": ["verified", "hash_mismatch", "fetch_error", "unchecked"]
+      },
+      "hash_match": { "type": "boolean" },
+      "onchain_live": {
+        "type": "string",
+        "enum": ["active", "deregistered_or_missing", "unknown"]
+      },
+      "endpoint_liveness": {
+        "type": "string",
+        "enum": ["alive", "dead", "unknown"]
+      },
+      "endpoint_http_status": { "type": "integer" },
+      "has_x402": { "type": "boolean" },
+      "has_auth": { "type": "boolean" },
+      "can_call": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["callable", "conditional", "blocked"]
+          },
+          "requirements": { "type": "array", "items": { "type": "string" } },
+          "blockers": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "summary": { "type": "string" }
+    },
+    "required": ["chain_id", "tool_id", "status", "hash_match", "onchain_live", "endpoint_liveness", "can_call", "summary"],
+    "additionalProperties": false
+  },
+  "pricing": null
+}
