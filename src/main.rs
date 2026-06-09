@@ -3,6 +3,7 @@ mod events;
 mod indexer;
 mod storage;
 mod types;
+mod verify;
 mod web;
 
 use std::sync::Arc;

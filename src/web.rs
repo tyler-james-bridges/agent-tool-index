@@ -16,6 +16,7 @@ use crate::events::{apply_event_history, apply_event_history_multi_chain, backfi
 use crate::indexer::{access_label, sync_all_chains, sync_registry_legacy};
 use crate::storage::{event_count, save_events_db, save_snapshot_db};
 use crate::types::{CHAINS, ManifestStatus, Snapshot, ToolRecord, ToolStatus};
+use crate::verify::verify_tool_live;
 
 const INDEX_HTML: &str = include_str!("../web/index.html");
 const TWEAKS_PANEL_JSX: &str = include_str!("../web/tweaks-panel.jsx");
@@ -67,6 +68,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/tools/{tool_id}", get(api_tool))
         .route("/api/tools/{tool_id}/can_call", post(api_can_call))
         .route("/api/resolve", get(resolve_help).post(api_resolve))
+        .route("/api/verify/{chain_id}/{tool_id}", get(api_verify))
         .route("/api/stats", get(api_stats))
         .route("/api/sync", post(api_sync))
         .route("/llms.txt", get(llms_txt))
@@ -195,6 +197,24 @@ async fn api_resolve(
     }))
 }
 
+async fn api_verify(Path((chain_id, tool_id)): Path<(u64, u64)>) -> Response {
+    if crate::verify::find_chain(chain_id).is_none() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": format!("unknown chain id {chain_id}") })),
+        )
+            .into_response();
+    }
+    match verify_tool_live(chain_id, tool_id).await {
+        Ok(report) => Json(report).into_response(),
+        Err(err) => (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({ "error": err.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
 async fn api_stats(State(state): State<AppState>) -> Json<Value> {
     let snapshot = state.snapshot.read().await;
     let events = event_count(&state.db_path).unwrap_or(0);
@@ -280,7 +300,7 @@ async fn llms_txt(State(state): State<AppState>) -> Response {
         .map(|(cid, name, count)| format!("{} ({}, {} tools)", name, cid, count))
         .collect::<Vec<_>>().join(", ");
     let body = format!(
-        "# Agent Tool Index\n\nVisual and agent-readable index for ERC-8257 tools across Ethereum, Base, and Abstract.\n\n## Registry\n\n- Registry address: {} (same on all chains)\n- Chains: {}\n- Synced at: {}\n- Tool count: {}\n\n## API\n\n- GET /api/tools - list all indexed tools\n- GET /api/tools/{{tool_id}} - single tool record\n- POST /api/tools/{{tool_id}}/can_call - plan whether a caller can invoke a tool\n- POST /api/resolve - resolve intent/filter criteria to candidate tools\n- GET /api/stats - index statistics\n- GET /openapi.json - OpenAPI 3.1 schema\n\n## Tool Records\n\nEach tool record includes: chain_id, chain_name, status, creator, metadata URI, access predicate,\npredicate_type, manifest verification status (JCS keccak256 hash), x402 detection, endpoint,\ntags, inputs, outputs, pricing, and checked_at timestamps.\n\n## Resolve\n\nPOST /api/resolve accepts: query, status, access, manifest_status, x402, limit.\nReturns scored candidates with invocation hints.\n\n## Call Planning\n\nPOST /api/tools/{{tool_id}}/can_call accepts: wallet, budget_usdc, allow_x402, has_auth.\nReturns callable/conditional/not_callable with requirements, blockers, and steps.\n",
+        "# Agent Tool Index\n\nVisual and agent-readable index for ERC-8257 tools across Ethereum, Base, and Abstract.\n\n## Registry\n\n- Registry address: {} (same on all chains)\n- Chains: {}\n- Synced at: {}\n- Tool count: {}\n\n## API\n\n- GET /api/tools - list all indexed tools\n- GET /api/tools/{{tool_id}} - single tool record\n- POST /api/tools/{{tool_id}}/can_call - plan whether a caller can invoke a tool\n- POST /api/resolve - resolve intent/filter criteria to candidate tools\n- GET /api/verify/{{chain_id}}/{{tool_id}} - live on-demand verification (onchain read + manifest hash + endpoint probe)\n- GET /api/stats - index statistics\n- GET /openapi.json - OpenAPI 3.1 schema\n\n## Tool Records\n\nEach tool record includes: chain_id, chain_name, status, creator, metadata URI, access predicate,\npredicate_type, manifest verification status (JCS keccak256 hash), x402 detection, endpoint,\ntags, inputs, outputs, pricing, and checked_at timestamps.\n\n## Resolve\n\nPOST /api/resolve accepts: query, status, access, manifest_status, x402, limit.\nReturns scored candidates with invocation hints.\n\n## Call Planning\n\nPOST /api/tools/{{tool_id}}/can_call accepts: wallet, budget_usdc, allow_x402, has_auth.\nReturns callable/conditional/not_callable with requirements, blockers, and steps.\n",
         snapshot.registry, chains_line, snapshot.synced_at, snapshot.tool_count
     );
     let mut headers = HeaderMap::new();
@@ -325,6 +345,17 @@ async fn openapi_json() -> Json<Value> {
                     "summary": "Resolve agent intent to candidate tools",
                     "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ResolveRequest" } } } },
                     "responses": { "200": json_response("ResolveResponse") }
+                }
+            },
+            "/api/verify/{chain_id}/{tool_id}": {
+                "get": {
+                    "summary": "Live on-demand verification of one tool",
+                    "description": "Reads the tool config onchain, fetches and JCS-hashes the manifest, probes the endpoint, and returns a structured trust report.",
+                    "parameters": [
+                        { "name": "chain_id", "in": "path", "required": true, "schema": { "type": "integer", "enum": [1, 8453, 2741] } },
+                        { "name": "tool_id", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } }
+                    ],
+                    "responses": { "200": json_response("VerifyReport"), "400": { "description": "Unknown chain id" }, "502": { "description": "RPC or verification failure" } }
                 }
             },
             "/api/stats": { "get": { "summary": "Get index statistics", "responses": { "200": json_response("StatsResponse") } } },
@@ -409,6 +440,34 @@ fn openapi_schemas() -> Value {
                 "filters": { "type": "object" },
                 "count": { "type": "integer" },
                 "tools": { "type": "array", "items": { "type": "object", "properties": { "score": { "type": "integer" }, "invocation": { "type": "string" }, "tool": { "$ref": "#/components/schemas/ToolRecord" } } } }
+            }
+        },
+        "VerifyReport": {
+            "type": "object",
+            "required": ["chain_id", "tool_id", "onchain_found", "status", "manifest_status", "hash_match", "can_call", "checked_at"],
+            "properties": {
+                "chain_id": { "type": "integer", "example": 8453 },
+                "chain_name": { "type": "string" },
+                "registry": { "type": "string", "format": "address" },
+                "tool_id": { "type": "integer", "minimum": 1 },
+                "onchain_found": { "type": "boolean" },
+                "status": { "type": "string", "enum": ["active", "deregistered", "read_error"] },
+                "manifest_status": { "type": "string", "enum": ["unchecked", "verified", "hash_mismatch", "fetch_error", "parse_error"] },
+                "onchain_manifest_hash": { "type": ["string", "null"] },
+                "computed_manifest_hash": { "type": ["string", "null"] },
+                "hash_match": { "type": "boolean" },
+                "metadata_uri": { "type": ["string", "null"], "format": "uri" },
+                "endpoint": { "type": ["string", "null"], "format": "uri" },
+                "endpoint_alive": { "type": ["boolean", "null"] },
+                "endpoint_liveness": { "type": "string", "enum": ["alive", "dead", "unknown"] },
+                "endpoint_http_status": { "type": ["integer", "null"] },
+                "access_predicate": { "type": ["string", "null"], "format": "address" },
+                "predicate_type": { "type": "string" },
+                "has_x402": { "type": "boolean" },
+                "has_auth": { "type": "boolean" },
+                "can_call": { "type": "object", "properties": { "status": { "type": "string", "enum": ["callable", "conditional", "not_callable"] }, "requirements": { "type": "array", "items": { "type": "string" } }, "blockers": { "type": "array", "items": { "type": "string" } } } },
+                "error": { "type": ["string", "null"] },
+                "checked_at": { "type": "string", "format": "date-time" }
             }
         },
         "StatsResponse": {
