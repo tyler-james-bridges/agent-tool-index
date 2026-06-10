@@ -28,6 +28,14 @@
   // EIP-6963: modern wallets announce themselves via events and may not set
   // window.ethereum at all (especially with multiple wallets installed).
   const discovered = new Map(); // rdns -> { info, provider }
+
+  // Remember which wallet the user connected so a page refresh can silently
+  // re-attach to the SAME wallet (eth_accounts, no prompt) instead of losing it.
+  const SAVED_KEY = "ati-wallet";
+  function saveWallet(id) { try { if (id) localStorage.setItem(SAVED_KEY, id); } catch (e) {} }
+  function clearWallet() { try { localStorage.removeItem(SAVED_KEY); } catch (e) {} }
+  function savedWallet() { try { return localStorage.getItem(SAVED_KEY); } catch (e) { return null; } }
+
   function setupDiscovery() {
     if (window.__atiDiscovery) return;
     window.__atiDiscovery = true;
@@ -37,7 +45,10 @@
       const key = (detail.info && (detail.info.rdns || detail.info.uuid || detail.info.name)) || String(discovered.size);
       const had = discovered.has(key);
       discovered.set(key, { info: detail.info, provider: detail.provider });
-      if (!had && !state.address) emit(); // a wallet appeared — refresh the button
+      // A wallet appeared. Refresh the button, and if it's the one the user
+      // connected before a refresh, silently re-attach (6963 announces async,
+      // so the saved wallet often shows up after the initial reconnect try).
+      if (!had && !state.address) { emit(); if (savedWallet()) reconnect(); }
     });
     try { window.dispatchEvent(new Event("eip6963:requestProvider")); } catch (e) {}
   }
@@ -116,7 +127,11 @@
     if (!p || p.__atiWired) return;
     p.__atiWired = true;
     if (p.on) {
-      p.on("accountsChanged", (accs) => { state.address = (accs && accs[0]) || null; emit(); });
+      p.on("accountsChanged", (accs) => {
+        state.address = (accs && accs[0]) || null;
+        if (!state.address) clearWallet();   // user disconnected — don't auto-reattach
+        emit();
+      });
       p.on("chainChanged", (cid) => { state.chainId = cid; emit(); });
     }
   }
@@ -145,10 +160,34 @@
       if (!state.address) throw new Error("No account available. Unlock your wallet and create or select an account, then retry.");
       state.chainId = await p.request({ method: "eth_chainId" });
       wireEvents(p);
+      // Persist the exact wallet picked so a refresh re-attaches to it.
+      const used = chosen || listWallets().find((wal) => wal.provider === p);
+      saveWallet((used && (used.rdns || used.key)) || "injected");
       return getState();
     } finally {
       state.connecting = false; emit();
     }
+  }
+
+  // Silently restore the previously-connected wallet on load — no prompt. Picks
+  // the SAME wallet the user chose (matched by rdns/key) once it has announced.
+  async function reconnect() {
+    const saved = savedWallet();
+    if (!saved || state.address) return getState();
+    const w = listWallets().find((x) => x.rdns === saved || x.key === saved);
+    const p = (w && w.provider) || (saved === "injected" ? provider() : null);
+    if (!p) return getState(); // its wallet hasn't announced yet —6963 handler retries
+    try {
+      const accs = await p.request({ method: "eth_accounts" }); // authorized accounts, no popup
+      if (accs && accs[0]) {
+        state.provider = p;
+        state.address = accs[0];
+        state.chainId = await p.request({ method: "eth_chainId" });
+        wireEvents(p);
+        emit();
+      }
+    } catch (e) {}
+    return getState();
   }
 
   async function refresh() {
@@ -335,17 +374,20 @@
   }
 
   window.ATI = {
-    connect, refresh, ensureChain, subscribe, getState, runTool,
+    connect, reconnect, refresh, ensureChain, subscribe, getState, runTool,
     hasProvider, walletCount, listWallets, fmtUsdcAtomic, NETWORKS,
     isMobile, mobileWalletLinks,
   };
 
-  // Discover wallets (EIP-6963) immediately, then pick up any already-authorized
-  // session without prompting.
+  // Discover wallets (EIP-6963) immediately. If the user connected before, the
+  // saved wallet is re-attached silently (reconnect); the 6963 announce handler
+  // retries once each wallet appears. With no saved wallet, fall back to the
+  // legacy eager check.
   setupDiscovery();
+  function init() { if (savedWallet()) reconnect(); else refresh(); }
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", refresh);
+    document.addEventListener("DOMContentLoaded", init);
   } else {
-    refresh();
+    init();
   }
 })();

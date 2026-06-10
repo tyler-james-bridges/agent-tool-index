@@ -220,6 +220,13 @@ function RunPanel({ t }) {
   const [mode, setMode] = useRS("form");   // "form" | "json"
   const [raw, setRaw] = useRS("");          // raw JSON body (json mode / no-schema tools)
   const dereg = t.status !== "active";
+  const resRef = useRR(null);
+
+  // After a run/payment completes, bring the response into view so the user
+  // never has to hunt for it down the page.
+  useRE(() => {
+    if (res && resRef.current) resRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [res]);
 
   function setField(name, v) { setVals((s) => ({ ...s, [name]: v })); }
 
@@ -253,8 +260,20 @@ function RunPanel({ t }) {
     if (!window.ATI) { push("Execution unavailable"); return; }
     setRunning(true); setRes(null);
     try {
+      // Paid tools: connect a wallet FIRST (prompting if needed) so the x402
+      // payment can actually be signed. This is what "Connect wallet & run"
+      // promises — previously it fired the call unpaid before connecting.
+      if (t.has_x402 && !window.ATI.getState().address) {
+        push("Connect a wallet to pay" + (fmtPrice(t.price_usdc) ? " " + fmtPrice(t.price_usdc) + " USDC" : ""));
+        await connectWallet(push);
+        if (!window.ATI.getState().address) {
+          setRes({ ok: false, status: 0, error: "Wallet not connected — connect a wallet to pay and run this tool." });
+          return;
+        }
+      }
       const body = payload();
       let r = await window.ATI.runTool(t, body);
+      // Safety net: the tool demanded payment we didn't anticipate.
       if (r.needWallet) {
         push("Connect a wallet to pay " + r.price_usdc + " USDC");
         await connectWallet(push);
@@ -317,7 +336,7 @@ function RunPanel({ t }) {
       </div>
 
       {res && (
-        <div className={"run-result " + (res.ok ? "ok" : "err")}>
+        <div className={"run-result " + (res.ok ? "ok" : "err")} ref={resRef}>
           <div className="rr-head">
             <span className={"rr-status " + (res.ok ? "ok" : "err")}>{res.ok ? "200 OK" : (res.status ? res.status + " ·" : "") + " " + (res.error || "error")}</span>
             {res.paid && res.payment && res.payment.transaction && (
