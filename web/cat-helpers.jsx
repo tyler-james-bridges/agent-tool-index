@@ -103,7 +103,7 @@ function resolveRecord(t) {
     tool_id: t.id,
     name: t.name,
     endpoint: t.endpoint,
-    method: "POST",
+    method: t.method || "POST",
     access: t.access,
     predicate_type: t.predicate_type || "unknown",
     requires_auth: t.has_auth,
@@ -145,15 +145,26 @@ function sampleValue(f) {
   return "<" + f.name + ">";
 }
 function invokeSnippet(t) {
+  const method = (t.method || "POST").toUpperCase();
+  const bodyless = method === "GET" || method === "HEAD";
   const body = {};
   (t.inputs || []).forEach((f) => { body[f.name] = sampleValue(f); });
+  const endpoint = t.endpoint || "https://endpoint.invalid";
   const lines = [];
-  lines.push(`POST ${t.endpoint || "https://endpoint.invalid"}`);
-  lines.push(`content-type: application/json`);
+  if (bodyless && Object.keys(body).length) {
+    // GET/HEAD carry inputs as query params, not a JSON body.
+    const qs = Object.keys(body).map((k) => k + "=" + encodeURIComponent(typeof body[k] === "object" ? JSON.stringify(body[k]) : body[k])).join("&");
+    lines.push(`${method} ${endpoint}?${qs}`);
+  } else {
+    lines.push(`${method} ${endpoint}`);
+  }
+  if (!bodyless) lines.push(`content-type: application/json`);
   if (t.has_auth) lines.push(`authorization: Bearer <siwe-session>`);
   if (t.has_x402) lines.push(`x-payment: <x402-signed-token>`);
-  lines.push("");
-  lines.push(JSON.stringify(body, null, 2));
+  if (!bodyless) {
+    lines.push("");
+    lines.push(JSON.stringify(body, null, 2));
+  }
   return lines.join("\n");
 }
 
@@ -161,7 +172,8 @@ function invokeSnippet(t) {
 function hlInvoke(text) {
   const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   return esc(text).split("\n").map((ln) => {
-    if (/^POST /.test(ln)) return `<span class="b">POST</span> <span class="k">${ln.slice(5)}</span>`;
+    const vm = ln.match(/^(GET|POST|PUT|PATCH|DELETE|HEAD) (.*)$/);
+    if (vm) return `<span class="b">${vm[1]}</span> <span class="k">${vm[2]}</span>`;
     if (/^[a-z-]+:/.test(ln)) { const i = ln.indexOf(":"); return `<span class="cm">${ln.slice(0, i)}</span>:${ln.slice(i + 1)}`; }
     return ln
       .replace(/("(?:[^"\\]|\\.)*")(\s*:)/g, '<span class="k">$1</span>$2')

@@ -529,6 +529,7 @@ pub fn frontend_tool(tool: &ToolRecord) -> Value {
         "name": frontend_tool_name(tool),
         "description": tool.description.as_deref().unwrap_or("No description published in the manifest."),
         "endpoint": tool.endpoint,
+        "method": manifest_method(tool),
         "creator": tool.creator,
         "metadata_uri": tool.metadata_uri,
         "manifest_hash": tool.manifest_hash,
@@ -562,6 +563,19 @@ pub fn frontend_access_label(tool: &ToolRecord) -> &'static str {
         "predicate" => "gated",
         other => other,
     }
+}
+
+// The HTTP method the manifest declares for the tool endpoint, upper-cased.
+// Defaults to POST (the common case and what the execution proxy uses) when the
+// manifest doesn't declare one.
+fn manifest_method(tool: &ToolRecord) -> String {
+    tool.manifest
+        .as_ref()
+        .and_then(|m| m.get("method"))
+        .and_then(Value::as_str)
+        .map(|s| s.trim().to_uppercase())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "POST".to_string())
 }
 
 fn manifest_inputs(tool: &ToolRecord) -> Vec<Value> {
@@ -1631,6 +1645,23 @@ mod tests {
         assert_eq!(inputs[0]["name"], "tab");
         assert_eq!(inputs[0]["enum"], json!(["featured", "latest"]));
         assert_eq!(inputs[0]["default"], json!("featured"));
+    }
+
+    #[test]
+    fn manifest_method_reads_declared_method_and_defaults_to_post() {
+        let mut tool = make_tool();
+        // no manifest -> POST default
+        assert_eq!(manifest_method(&tool), "POST");
+        // declared GET (any case) is surfaced, upper-cased
+        tool.manifest = Some(json!({ "method": "get" }));
+        assert_eq!(manifest_method(&tool), "GET");
+        tool.manifest = Some(json!({ "method": "Put" }));
+        assert_eq!(manifest_method(&tool), "PUT");
+        // missing/blank method on an existing manifest -> POST
+        tool.manifest = Some(json!({ "name": "x" }));
+        assert_eq!(manifest_method(&tool), "POST");
+        tool.manifest = Some(json!({ "method": "  " }));
+        assert_eq!(manifest_method(&tool), "POST");
     }
 
     // ---- manifest_outputs ----

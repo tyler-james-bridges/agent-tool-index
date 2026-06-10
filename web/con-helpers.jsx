@@ -80,7 +80,7 @@ function buildResolveJSON(t) {
   return JSON.stringify({
     chain_id: t.chain_id || REG.chain_id, chain_name: chainName(t.chain_id || REG.chain_id),
     registry: REG.registry, tool_id: t.id, name: t.name, endpoint: t.endpoint,
-    method: "POST", access: t.access, predicate_type: t.predicate_type || "unknown",
+    method: t.method || "POST", access: t.access, predicate_type: t.predicate_type || "unknown",
     requires_x402: t.has_x402, requires_auth: t.has_auth,
     price_usdc: t.price_usdc, manifest_verified: t.manifest_status === "verified",
   }, null, 2);
