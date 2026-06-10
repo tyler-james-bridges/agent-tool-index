@@ -199,7 +199,15 @@
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ url, body, xPayment: xPayment || undefined }),
     });
-    return res.json(); // envelope: { ok, status, headers, body }
+    // Success path: the proxy wraps the upstream call in { ok, status, headers, body }.
+    let env = null;
+    try { env = await res.json(); } catch (e) { /* non-JSON proxy response */ }
+    if (env && typeof env.status === "number") return env;
+    // Proxy-level error (host not allowlisted, bad url, upstream fetch failed, …)
+    // returns { error } with no numeric status — normalize it into an envelope so
+    // callers surface the real reason instead of "Tool returned undefined".
+    const msg = (env && (env.error || env.message)) || ("Execution proxy error (HTTP " + res.status + ")");
+    return { ok: false, status: res.status, headers: {}, body: env, error: msg };
   }
 
   // Build + sign the x402 "exact" EVM payment (EIP-3009 transferWithAuthorization).
@@ -295,7 +303,10 @@
         accept,
         price_usdc: fmtUsdcAtomic(accept.maxAmountRequired),
         payment: decodePaymentResponse(env2.headers && env2.headers["x-payment-response"]),
-        error: env2.status >= 200 && env2.status < 300 ? null : "Settlement returned " + env2.status,
+        error: env2.status >= 200 && env2.status < 300 ? null
+          : (env2.body && env2.body.error) ? env2.body.error
+          : env2.error ? env2.error
+          : "Settlement returned " + env2.status,
       };
     }
 
@@ -303,7 +314,10 @@
       ok: env.status >= 200 && env.status < 300,
       status: env.status,
       data: env.body,
-      error: env.status >= 200 && env.status < 300 ? null : (env.body && env.body.error) ? env.body.error : "Tool returned " + env.status,
+      error: env.status >= 200 && env.status < 300 ? null
+        : (env.body && env.body.error) ? env.body.error
+        : env.error ? env.error
+        : "Tool returned " + env.status,
     };
   }
 
