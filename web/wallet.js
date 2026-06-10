@@ -232,11 +232,11 @@
     try { return (Number(v) / 1e6).toString(); } catch (e) { return String(v); }
   }
 
-  async function postCall(url, body, xPayment) {
+  async function postCall(url, body, xPayment, method) {
     const res = await fetch("/api/call", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ url, body, xPayment: xPayment || undefined }),
+      body: JSON.stringify({ url, body, xPayment: xPayment || undefined, method: method || undefined }),
     });
     // Success path: the proxy wraps the upstream call in { ok, status, headers, body }.
     let env = null;
@@ -316,9 +316,10 @@
   async function runTool(tool, inputs) {
     const url = tool.endpoint;
     if (!url) return { ok: false, status: 0, error: "Tool has no endpoint." };
+    const method = (tool.method || "POST").toUpperCase();
 
     let env;
-    try { env = await postCall(url, inputs); }
+    try { env = await postCall(url, inputs, null, method); }
     catch (e) { return { ok: false, status: 0, error: "Network error reaching proxy: " + (e && e.message || e) }; }
 
     if (env.status === 402 && env.body && Array.isArray(env.body.accepts)) {
@@ -332,7 +333,7 @@
       catch (e) { return { ok: false, status: 402, accept, error: "Payment signing failed: " + (e && e.message || e) }; }
 
       let env2;
-      try { env2 = await postCall(url, inputs, xPayment); }
+      try { env2 = await postCall(url, inputs, xPayment, method); }
       catch (e) { return { ok: false, status: 0, error: "Network error settling payment: " + (e && e.message || e) }; }
       return {
         ok: env2.status >= 200 && env2.status < 300,

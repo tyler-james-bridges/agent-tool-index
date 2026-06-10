@@ -31,7 +31,16 @@ module.exports = async function handler(req, res) {
   const method = (body.method || "POST").toUpperCase();
   const headers = { accept: "application/json" };
   let payload;
-  if (method !== "GET" && method !== "HEAD") {
+  if (method === "GET" || method === "HEAD") {
+    // GET/HEAD carry no body — fold the inputs into the query string instead, so
+    // tools whose manifest declares GET actually receive their parameters.
+    if (body.body && typeof body.body === "object") {
+      for (const [k, v] of Object.entries(body.body)) {
+        if (v == null) continue;
+        parsed.searchParams.set(k, typeof v === "object" ? JSON.stringify(v) : String(v));
+      }
+    }
+  } else {
     headers["content-type"] = "application/json";
     payload = JSON.stringify(body.body != null ? body.body : {});
   }
@@ -41,7 +50,7 @@ module.exports = async function handler(req, res) {
   const timeout = setTimeout(() => controller.abort(), 30000);
   let upstream;
   try {
-    upstream = await fetch(target, { method, headers, body: payload, signal: controller.signal });
+    upstream = await fetch(parsed.toString(), { method, headers, body: payload, signal: controller.signal });
   } catch (e) {
     clearTimeout(timeout);
     return lib.send(res, 502, { error: "upstream fetch failed", detail: String(e && e.message || e) });
