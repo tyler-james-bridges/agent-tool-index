@@ -211,9 +211,13 @@ async fn main() -> Result<()> {
                 .unwrap_or_else(|| load_snapshot(&cli.cache_path).unwrap_or_else(|_| fallback_snapshot().unwrap()));
             
             let registry = web::frontend_registry(&snapshot);
-            let js_content = format!("window.REGISTRY = {};", serde_json::to_string(&registry)?);
+            let registry_json = serde_json::to_string(&registry)?;
+            let js_content = format!("window.REGISTRY = {};", registry_json);
             
             std::fs::write("web/registry-data.js", js_content)?;
+            // The serverless verify endpoint reads api/registry.json, so keep it
+            // in lockstep with the visual explorer's snapshot from the same sync.
+            std::fs::write("api/registry.json", registry_json)?;
             
             let stats = snapshot.stats();
             let chains_summary = snapshot.chains_summary();
