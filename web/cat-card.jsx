@@ -60,8 +60,15 @@ function HumanLens({ t, ctx, push }) {
               {inputs.map((f) => (
                 <div className="param" key={f.name}>
                   <span className="pn">{f.name}</span>
-                  <span className={"pt" + (f.required ? "" : " opt")}>{TYPE_WORD[f.type] || f.type}{f.required ? "" : " · optional"}</span>
+                  <span className={"pt" + (f.required ? "" : " opt")}>{TYPE_WORD[f.type] || (Array.isArray(f.type) ? f.type.join(" | ") : f.type)}{f.required ? "" : " · optional"}</span>
                   <span className="pd">{f.description || ""}</span>
+                  {((Array.isArray(f.enum) && f.enum.length) || f.default != null || f.minimum != null || f.maximum != null) && (
+                    <span className="pmeta">
+                      {Array.isArray(f.enum) && f.enum.length ? <span className="pmk">options: {f.enum.map(String).join(", ")}</span> : null}
+                      {f.default != null ? <span className="pmk">default: {String(f.default)}</span> : null}
+                      {(f.minimum != null || f.maximum != null) ? <span className="pmk">range: {f.minimum != null ? f.minimum : "−∞"}…{f.maximum != null ? f.maximum : "∞"}</span> : null}
+                    </span>
+                  )}
                 </div>
               ))}
             </div>

@@ -24,7 +24,7 @@ const Ico = {
 };
 
 /* ---------- plain-language helpers ---------- */
-const TYPE_WORD = { string: "text", number: "number", boolean: "true / false", array: "list", object: "object" };
+const TYPE_WORD = { string: "text", number: "number", integer: "number", boolean: "true / false", array: "list", object: "object" };
 
 // One-line "what it costs / how you reach it" plain summary line.
 function priceLine(t) {
@@ -131,11 +131,22 @@ function canCallRecord(t, ctx) {
     invocation: steps,
   };
 }
+// A concrete sample value for an input — prefers the manifest's own default /
+// example / first enum so the agent snippet is copy-paste runnable.
+function sampleValue(f) {
+  if (f.default != null) return f.default;
+  if (f.examples && f.examples.length) return f.examples[0];
+  if (Array.isArray(f.enum) && f.enum.length) return f.enum[0];
+  const ty = Array.isArray(f.type) ? f.type[0] : f.type;
+  if (ty === "integer" || ty === "number") return f.minimum != null ? f.minimum : 0;
+  if (ty === "boolean") return false;
+  if (ty === "array") return [];
+  if (ty === "object") return {};
+  return "<" + f.name + ">";
+}
 function invokeSnippet(t) {
   const body = {};
-  (t.inputs || []).forEach((f) => {
-    body[f.name] = f.type === "string" ? "<" + f.name + ">" : f.type === "array" ? [] : f.type === "number" ? 0 : f.type === "boolean" ? false : null;
-  });
+  (t.inputs || []).forEach((f) => { body[f.name] = sampleValue(f); });
   const lines = [];
   lines.push(`POST ${t.endpoint || "https://endpoint.invalid"}`);
   lines.push(`content-type: application/json`);

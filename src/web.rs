@@ -24,7 +24,10 @@ const CON_HELPERS_JSX: &str = include_str!("../web/con-helpers.jsx");
 const CAT_DOMAINS_JSX: &str = include_str!("../web/cat-domains.jsx");
 const CAT_HELPERS_JSX: &str = include_str!("../web/cat-helpers.jsx");
 const CAT_CARD_JSX: &str = include_str!("../web/cat-card.jsx");
+const CAT_RUN_JSX: &str = include_str!("../web/cat-run.jsx");
 const CAT_APP_JSX: &str = include_str!("../web/cat-app.jsx");
+const WALLET_JS: &str = include_str!("../web/wallet.js");
+const FAVICON_SVG: &str = include_str!("../web/favicon.svg");
 const FALLBACK_REGISTRY_DATA_JS: &str = include_str!("../web/registry-data.js");
 
 #[derive(Clone)]
@@ -62,7 +65,10 @@ pub fn router(state: AppState) -> Router {
         .route("/cat-domains.jsx", get(cat_domains_jsx))
         .route("/cat-helpers.jsx", get(cat_helpers_jsx))
         .route("/cat-card.jsx", get(cat_card_jsx))
+        .route("/cat-run.jsx", get(cat_run_jsx))
         .route("/cat-app.jsx", get(cat_app_jsx))
+        .route("/wallet.js", get(wallet_js))
+        .route("/favicon.svg", get(favicon_svg))
         .route("/tools/{tool_id}", get(tool_page))
         .route("/api/tools", get(api_tools))
         .route("/api/tools/{tool_id}", get(api_tool))
@@ -111,8 +117,20 @@ async fn cat_card_jsx() -> Response {
     babel_response(CAT_CARD_JSX)
 }
 
+async fn cat_run_jsx() -> Response {
+    babel_response(CAT_RUN_JSX)
+}
+
 async fn cat_app_jsx() -> Response {
     babel_response(CAT_APP_JSX)
+}
+
+async fn wallet_js() -> Response {
+    javascript_response(WALLET_JS.to_string())
+}
+
+async fn favicon_svg() -> Response {
+    text_response("image/svg+xml; charset=utf-8", FAVICON_SVG.to_string())
 }
 
 async fn tool_page(Path(tool_id): Path<u64>, State(state): State<AppState>) -> Response {
@@ -591,21 +609,29 @@ fn normalize_input_field(field: &Value, index: usize) -> Option<Value> {
                 .and_then(Value::as_str)
                 .map(str::to_string)
                 .unwrap_or_else(|| format!("input{}", index + 1));
-            Some(json!({
-                "name": name,
-                "type": map
-                    .get("type")
+            let mut out = serde_json::Map::new();
+            out.insert("name".to_string(), Value::String(name));
+            out.insert(
+                "type".to_string(),
+                map.get("type")
                     .cloned()
                     .unwrap_or_else(|| Value::String("object".to_string())),
-                "required": map
-                    .get("required")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false),
-                "description": map
-                    .get("description")
-                    .and_then(Value::as_str)
-                    .unwrap_or(""),
-            }))
+            );
+            out.insert(
+                "required".to_string(),
+                Value::Bool(map.get("required").and_then(Value::as_bool).unwrap_or(false)),
+            );
+            out.insert(
+                "description".to_string(),
+                Value::String(
+                    map.get("description")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string(),
+                ),
+            );
+            copy_schema_extras(&mut out, field);
+            Some(Value::Object(out))
         }
         Value::String(name) => Some(json!({
             "name": name,
@@ -614,6 +640,23 @@ fn normalize_input_field(field: &Value, index: usize) -> Option<Value> {
             "description": "",
         })),
         _ => None,
+    }
+}
+
+// Carry the descriptive/constraint schema fields the run UI uses to offer
+// choices (dropdowns, prefilled defaults, ranges) instead of demanding free
+// text. Only inserted when present so the snapshot stays lean. A single
+// `example` is normalized into the `examples` array the frontend reads.
+fn copy_schema_extras(out: &mut serde_json::Map<String, Value>, spec: &Value) {
+    for key in ["enum", "default", "examples", "format", "pattern", "minimum", "maximum"] {
+        if let Some(v) = spec.get(key) {
+            out.insert(key.to_string(), v.clone());
+        }
+    }
+    if !out.contains_key("examples") {
+        if let Some(ex) = spec.get("example") {
+            out.insert("examples".to_string(), Value::Array(vec![ex.clone()]));
+        }
     }
 }
 
@@ -636,15 +679,24 @@ fn schema_inputs(schema: Option<&Value>) -> Option<Vec<Value>> {
         properties
             .iter()
             .map(|(name, spec)| {
-                json!({
-                    "name": name,
-                    "type": schema_type(spec),
-                    "required": required.iter().any(|item| item == name),
-                    "description": spec
-                        .get("description")
-                        .and_then(Value::as_str)
-                        .unwrap_or(""),
-                })
+                let mut out = serde_json::Map::new();
+                out.insert("name".to_string(), Value::String(name.clone()));
+                out.insert("type".to_string(), schema_type(spec));
+                out.insert(
+                    "required".to_string(),
+                    Value::Bool(required.iter().any(|item| item == name)),
+                );
+                out.insert(
+                    "description".to_string(),
+                    Value::String(
+                        spec.get("description")
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .to_string(),
+                    ),
+                );
+                copy_schema_extras(&mut out, spec);
+                Value::Object(out)
             })
             .collect(),
     )
@@ -1533,6 +1585,52 @@ mod tests {
             assert_eq!(field["required"], true);
             assert_eq!(field["type"], "integer");
         }
+    }
+
+    #[test]
+    fn inputs_carry_enum_default_range_and_pattern() {
+        // The run UI offers choices (dropdowns, prefilled defaults, ranges)
+        // only if these schema fields survive flattening. Regression for that.
+        let mut tool = make_tool();
+        tool.manifest = Some(json!({
+            "inputs": {
+                "type": "object",
+                "properties": {
+                    "sort": { "type": "string", "enum": ["new", "top"], "default": "new" },
+                    "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 },
+                    "wallet": { "type": "string", "pattern": "^0x[a-fA-F0-9]{40}$", "example": "0xabc" }
+                },
+                "required": ["sort"]
+            }
+        }));
+        let inputs = manifest_inputs(&tool);
+        let by = |n: &str| inputs.iter().find(|i| i["name"] == n).unwrap().clone();
+        let sort = by("sort");
+        assert_eq!(sort["enum"], json!(["new", "top"]));
+        assert_eq!(sort["default"], json!("new"));
+        let limit = by("limit");
+        assert_eq!(limit["minimum"], json!(1));
+        assert_eq!(limit["maximum"], json!(100));
+        assert_eq!(limit["default"], json!(20));
+        let wallet = by("wallet");
+        assert_eq!(wallet["pattern"], json!("^0x[a-fA-F0-9]{40}$"));
+        // single `example` is normalized into the `examples` array
+        assert_eq!(wallet["examples"], json!(["0xabc"]));
+    }
+
+    #[test]
+    fn array_form_inputs_carry_enum_and_default() {
+        let mut tool = make_tool();
+        tool.manifest = Some(json!({
+            "inputs": [
+                { "name": "tab", "type": "string", "required": true,
+                  "enum": ["featured", "latest"], "default": "featured" }
+            ]
+        }));
+        let inputs = manifest_inputs(&tool);
+        assert_eq!(inputs[0]["name"], "tab");
+        assert_eq!(inputs[0]["enum"], json!(["featured", "latest"]));
+        assert_eq!(inputs[0]["default"], json!("featured"));
     }
 
     // ---- manifest_outputs ----
