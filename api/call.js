@@ -18,7 +18,12 @@ module.exports = async function handler(req, res) {
   let parsed;
   try { parsed = new URL(target); } catch (e) { return lib.send(res, 400, { error: "invalid url" }); }
   if (parsed.protocol !== "https:") return lib.send(res, 400, { error: "https only" });
-  if (!lib.allowedHosts().has(parsed.host.toLowerCase())) {
+  // Same-origin tools (endpoints hosted on this deployment, e.g. verify-tool at
+  // /api/verify) are always trusted — they can't be an SSRF vector since the
+  // caller could hit them directly. Registry-derived hosts cover everyone else.
+  const selfHost = String(req.headers.host || "").toLowerCase();
+  const host = parsed.host.toLowerCase();
+  if (host !== selfHost && !lib.allowedHosts().has(host)) {
     return lib.send(res, 403, { error: "host not in registry allowlist", host: parsed.host });
   }
 

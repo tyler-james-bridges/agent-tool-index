@@ -565,6 +565,8 @@ fn manifest_inputs(tool: &ToolRecord) -> Vec<Value> {
     }
 
     for key in [
+        "inputs",
+        "input",
         "inputSchema",
         "input_schema",
         "requestSchema",
@@ -1505,6 +1507,32 @@ mod tests {
         assert_eq!(inputs[0]["type"], "string");
         assert_eq!(inputs[0]["required"], true);
         assert_eq!(inputs[0]["description"], "query");
+    }
+
+    #[test]
+    fn inputs_from_inputs_key_as_json_schema_object() {
+        // ERC-8257 manifests may declare `inputs` as a JSON-Schema object
+        // (verify-tool does), not the array form. It must still flatten to
+        // named fields so the run UI renders inputs. Regression for tool 136.
+        let mut tool = make_tool();
+        tool.manifest = Some(json!({
+            "inputs": {
+                "type": "object",
+                "properties": {
+                    "chain_id": { "type": "integer", "description": "EVM chain id" },
+                    "tool_id": { "type": "integer", "description": "tool id" }
+                },
+                "required": ["chain_id", "tool_id"]
+            }
+        }));
+        let inputs = manifest_inputs(&tool);
+        let names: Vec<&str> = inputs.iter().map(|i| i["name"].as_str().unwrap()).collect();
+        assert!(names.contains(&"chain_id"));
+        assert!(names.contains(&"tool_id"));
+        for field in &inputs {
+            assert_eq!(field["required"], true);
+            assert_eq!(field["type"], "integer");
+        }
     }
 
     // ---- manifest_outputs ----
