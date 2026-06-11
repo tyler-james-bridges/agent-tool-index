@@ -169,6 +169,27 @@
     }
   }
 
+  // Disconnect: forget the wallet for this session and across refreshes. Clears
+  // the saved wallet so reconnect() won't silently re-attach, drops local state,
+  // and best-effort revokes the dapp's account permission (EIP-2255) so the
+  // wallet actually shows us as disconnected — wallets that don't support it
+  // just no-op, which is fine since we've already dropped the connection.
+  async function disconnect() {
+    const p = state.provider || provider();
+    clearWallet();
+    if (p && p.request) {
+      try {
+        await p.request({ method: "wallet_revokePermissions", params: [{ eth_accounts: {} }] });
+      } catch (e) { /* not supported / rejected — local disconnect still stands */ }
+    }
+    state.provider = null;
+    state.address = null;
+    state.chainId = null;
+    state.connecting = false;
+    emit();
+    return getState();
+  }
+
   // Silently restore the previously-connected wallet on load — no prompt. Picks
   // the SAME wallet the user chose (matched by rdns/key) once it has announced.
   async function reconnect() {
@@ -375,7 +396,7 @@
   }
 
   window.ATI = {
-    connect, reconnect, refresh, ensureChain, subscribe, getState, runTool,
+    connect, disconnect, reconnect, refresh, ensureChain, subscribe, getState, runTool,
     hasProvider, walletCount, listWallets, fmtUsdcAtomic, NETWORKS,
     isMobile, mobileWalletLinks,
   };

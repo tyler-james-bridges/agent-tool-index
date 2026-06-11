@@ -26,6 +26,12 @@ async function connectKey(key, push) {
   catch (e) { if (push) push(e && e.message ? e.message : "Wallet connection failed"); }
 }
 
+async function disconnectWallet(push) {
+  if (!window.ATI) return;
+  try { await window.ATI.disconnect(); if (push) push("Wallet disconnected"); }
+  catch (e) { if (push) push(e && e.message ? e.message : "Disconnect failed"); }
+}
+
 function WalletButton() {
   const w = useWallet();
   const push = useToast();
@@ -43,12 +49,25 @@ function WalletButton() {
   if (w.address) {
     return (
       <div className="walletwrap">
-        <button className="walletbtn" data-on="true" onClick={() => copyText(w.address).then(() => push("Address copied"))}
+        <button className="walletbtn" data-on="true" onClick={() => setPicking((v) => !v)}
           title={w.address + (net ? " · " + net.name : "")}>
           <span className="wdot" />
           <span className="waddr">{short(w.address, 4)}</span>
           {net && <span className="wnet">{net.name}</span>}
         </button>
+        {picking && (
+          <div className="walletmenu">
+            <div className="wm-head">{net ? net.name : "Connected"}</div>
+            <button className="wm-item" onClick={() => { setPicking(false); copyText(w.address).then(() => push("Address copied")); }}>
+              <span className="wm-ico ph" />
+              <span className="wm-name">Copy address</span>
+            </button>
+            <button className="wm-item" onClick={() => { setPicking(false); disconnectWallet(push); }}>
+              <span className="wm-ico ph" />
+              <span className="wm-name">Disconnect</span>
+            </button>
+          </div>
+        )}
       </div>
     );
   }
