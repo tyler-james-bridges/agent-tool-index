@@ -14,7 +14,10 @@ use tokio::sync::RwLock;
 use tracing_subscriber::EnvFilter;
 
 use crate::cache::{load_snapshot, save_snapshot};
-use crate::events::{apply_event_history, apply_event_history_multi_chain, backfill_all_events, backfill_events, backfill_events_legacy};
+use crate::events::{
+    apply_event_history, apply_event_history_multi_chain, backfill_all_events, backfill_events,
+    backfill_events_legacy,
+};
 use crate::indexer::{sync_all_chains, sync_registry, sync_registry_legacy};
 use crate::storage::{event_count, init_db, load_snapshot_db, save_events_db, save_snapshot_db};
 use crate::types::{CACHE_PATH, CHAINS, DB_PATH, DEFAULT_RPC_URL, MultiChainSnapshot, Snapshot};
@@ -70,41 +73,52 @@ async fn main() -> Result<()> {
                     .split(',')
                     .filter_map(|s| s.trim().parse().ok())
                     .collect();
-                
+
                 let filtered_chains: Vec<_> = CHAINS
                     .iter()
                     .filter(|config| chain_ids.contains(&config.chain_id))
                     .collect();
-                
+
                 if filtered_chains.is_empty() {
                     eprintln!("No valid chains found for IDs: {}", chain_filter);
                     return Ok(());
                 }
-                
+
                 let mut all_tools = Vec::new();
                 let mut all_events = Vec::new();
-                
+
                 for chain_config in filtered_chains {
-                    if let Ok(mut snapshot) = sync_registry(chain_config).await {
-                        if let Ok(events) = backfill_events(chain_config).await {
+                    let mut snapshot = sync_registry(chain_config).await.map_err(|err| {
+                        anyhow::anyhow!("failed to sync chain {}: {}", chain_config.name, err)
+                    })?;
+                    match backfill_events(chain_config).await {
+                        Ok(events) => {
                             apply_event_history(&mut snapshot, &events).await?;
                             all_events.extend(events);
                         }
-                        all_tools.extend(snapshot.tools);
+                        Err(err) => {
+                            eprintln!(
+                                "Failed to backfill events for chain {}: {}",
+                                chain_config.name, err
+                            );
+                        }
                     }
+                    all_tools.extend(snapshot.tools);
                 }
-                
+
                 let multi_snapshot = MultiChainSnapshot {
                     synced_at: chrono::Utc::now(),
                     tools: all_tools,
                 };
-                
+
                 let stats = multi_snapshot.stats();
-                save_snapshot_db(&cli.db_path, &multi_snapshot.into())?;
+                let snapshot: Snapshot = multi_snapshot.into();
+                save_snapshot(&cli.cache_path, &snapshot)?;
+                save_snapshot_db(&cli.db_path, &snapshot)?;
                 if !all_events.is_empty() {
                     save_events_db(&cli.db_path, &all_events)?;
                 }
-                
+
                 println!(
                     "synced {} tools from {} chains: {} active, {} deregistered, {} verified manifests, {} events stored",
                     stats.total_ids,
@@ -146,7 +160,7 @@ async fn main() -> Result<()> {
                 if !events.is_empty() {
                     save_events_db(&cli.db_path, &events)?;
                 }
-                
+
                 println!(
                     "synced {} tools across {} chains: {} active, {} deregistered, {} verified manifests, {} events stored",
                     stats.total_ids,
@@ -156,7 +170,7 @@ async fn main() -> Result<()> {
                     stats.verified_manifests,
                     event_count(&cli.db_path)?
                 );
-                
+
                 for (chain_id, name, count) in chains_summary {
                     println!("  {} ({}): {} tools", name, chain_id, count);
                 }
@@ -164,30 +178,30 @@ async fn main() -> Result<()> {
         }
         Command::BackfillEvents { chains } => {
             init_db(&cli.db_path)?;
-            
+
             if let Some(chain_filter) = chains {
                 let chain_ids: Vec<u64> = chain_filter
                     .split(',')
                     .filter_map(|s| s.trim().parse().ok())
                     .collect();
-                
+
                 let filtered_chains: Vec<_> = CHAINS
                     .iter()
                     .filter(|config| chain_ids.contains(&config.chain_id))
                     .collect();
-                
+
                 if filtered_chains.is_empty() {
                     eprintln!("No valid chains found for IDs: {}", chain_filter);
                     return Ok(());
                 }
-                
+
                 let mut all_events = Vec::new();
                 for chain_config in filtered_chains {
                     if let Ok(events) = backfill_events(chain_config).await {
                         all_events.extend(events);
                     }
                 }
-                
+
                 let inserted = save_events_db(&cli.db_path, &all_events)?;
                 println!(
                     "fetched {} events from {} chains, inserted {} new rows",
@@ -207,18 +221,19 @@ async fn main() -> Result<()> {
         }
         Command::ExportStatic => {
             init_db(&cli.db_path)?;
-            let snapshot = load_snapshot_db(&cli.db_path)?
-                .unwrap_or_else(|| load_snapshot(&cli.cache_path).unwrap_or_else(|_| fallback_snapshot().unwrap()));
-            
+            let snapshot = load_snapshot_db(&cli.db_path)?.unwrap_or_else(|| {
+                load_snapshot(&cli.cache_path).unwrap_or_else(|_| fallback_snapshot().unwrap())
+            });
+
             let registry = web::frontend_registry(&snapshot);
             let registry_json = serde_json::to_string(&registry)?;
             let js_content = format!("window.REGISTRY = {};", registry_json);
-            
+
             std::fs::write("web/registry-data.js", js_content)?;
             // The serverless verify endpoint reads api/registry.json, so keep it
             // in lockstep with the visual explorer's snapshot from the same sync.
             std::fs::write("api/registry.json", registry_json)?;
-            
+
             let stats = snapshot.stats();
             let chains_summary = snapshot.chains_summary();
             println!(
