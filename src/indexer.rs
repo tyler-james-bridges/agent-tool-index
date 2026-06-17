@@ -276,8 +276,10 @@ fn declares_x402(manifest: &Value) -> bool {
     }
 }
 
-/// True when `pricing` carries a concrete amount (array of entries or a single
+/// True when `pricing` carries a positive amount (array of entries or a single
 /// object). A priced tool is x402 regardless of where the scheme string lives.
+/// An `amount` of 0 (e.g. an "open-access" entry) is free, not a charge -- and
+/// genuinely metered tools still match via the x402 scheme/tag text below.
 fn manifest_has_pricing_amount(manifest: &Value) -> bool {
     let entry = match manifest.get("pricing") {
         Some(Value::Array(items)) => match items.first() {
@@ -287,7 +289,11 @@ fn manifest_has_pricing_amount(manifest: &Value) -> bool {
         Some(obj @ Value::Object(_)) => obj,
         _ => return false,
     };
-    entry.get("amount").is_some()
+    match entry.get("amount") {
+        Some(Value::Number(n)) => n.as_f64().map(|v| v > 0.0).unwrap_or(false),
+        Some(Value::String(s)) => s.trim().parse::<f64>().map(|v| v > 0.0).unwrap_or(false),
+        _ => false,
+    }
 }
 
 fn value_contains(value: &Value, needle: &str) -> bool {
@@ -347,6 +353,16 @@ mod x402_tests {
             "pricing": { "protocol": "x402", "amount": "2.00" }
         });
         assert!(declares_x402(&manifest));
+    }
+
+    #[test]
+    fn zero_amount_open_access_is_not_x402() {
+        // WANCAI: a free, open-access pricing entry with amount "0" must read free.
+        let manifest = json!({
+            "name": "wancai-wish",
+            "pricing": [{ "amount": "0", "protocol": "open-access", "label": "Free" }]
+        });
+        assert!(!declares_x402(&manifest));
     }
 
     #[test]
