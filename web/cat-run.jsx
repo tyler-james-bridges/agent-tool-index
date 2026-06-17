@@ -358,11 +358,19 @@ function RunPanel({ t }) {
         <div className={"run-result " + (res.ok ? "ok" : "err")} ref={resRef}>
           <div className="rr-head">
             <span className={"rr-status " + (res.ok ? "ok" : "err")}>{res.ok ? "200 OK" : (res.status ? res.status + " ·" : "") + " " + (res.error || "error")}</span>
-            {res.paid && res.payment && res.payment.transaction && (
-              <a className="rr-tx" href={"https://basescan.org/tx/" + res.payment.transaction} target="_blank" rel="noreferrer">
-                {Ico.ext}settled {short(res.payment.transaction, 6)}
-              </a>
-            )}
+            <span className="rr-tools">
+              {res.paid && res.payment && res.payment.transaction && (
+                <a className="rr-tx" href={"https://basescan.org/tx/" + res.payment.transaction} target="_blank" rel="noreferrer">
+                  {Ico.ext}settled {short(res.payment.transaction, 6)}
+                </a>
+              )}
+              {res.data != null && (
+                <button className="rr-copy" onClick={() => {
+                  copyText(typeof res.data === "string" ? res.data : JSON.stringify(res.data, null, 2));
+                  push("Copied response");
+                }}>{Ico.copy} copy response</button>
+              )}
+            </span>
           </div>
           {res.data != null && (
             <pre className="rr-body" dangerouslySetInnerHTML={{
