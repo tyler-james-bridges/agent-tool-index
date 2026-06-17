@@ -81,9 +81,18 @@ function LensSwitch({ lens, setLens }) {
 
 function CallerBar({ ctx, setCtx }) {
   const set = (k, v) => setCtx((c) => ({ ...c, [k]: v }));
+  // On mobile the context controls are advanced/secondary, so collapse them behind
+  // a one-line summary by default. Desktop ignores data-open and always shows them.
+  const [open, setOpen] = useS(false);
+  const summary = [ctx.wallet && "Wallet", ctx.auth && "SIWE", ctx.x402 && "x402"].filter(Boolean).join(" · ") || "Anonymous";
   return (
-    <div className="callerbar">
-      <span className="ttl">Calling as</span>
+    <div className="callerbar" data-open={open}>
+      <button className="caller-toggle" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        <span className="ttl">Calling as</span>
+        <span className="caller-sum">{summary} · ${ctx.budget}</span>
+        <span className="caller-car">{Ico.chev}</span>
+      </button>
+      <span className="ttl ttl-desk">Calling as</span>
       <div className="ctxgroup">
         <button className="ctxtog" data-on={ctx.wallet} onClick={() => set("wallet", !ctx.wallet)}><span className="sw" />Wallet connected</button>
         <button className="ctxtog" data-on={ctx.auth} onClick={() => set("auth", !ctx.auth)}><span className="sw" />SIWE sign-in</button>
