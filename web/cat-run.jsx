@@ -310,7 +310,7 @@ function RunPanel({ t }) {
 
   const label = dereg ? "Deregistered — cannot run"
     : running ? "Running…"
-    : t.has_x402 ? (w.address ? ("Pay " + (fmtPrice(t.price_usdc) || "") + " USDC & run") : "Connect wallet & run")
+    : t.has_x402 ? (w.address ? ("Pay " + (fmtPrice(t.price_usdc) ? fmtPrice(t.price_usdc) + " USDC " : "") + "& run") : "Connect wallet & run")
     : "Run now";
 
   return (
@@ -370,6 +370,11 @@ function RunPanel({ t }) {
             }} />
           )}
           {res.needWallet && <div className="rr-note">Connect a wallet (top right) to pay and run.</div>}
+          {/* Flagged x402 but the endpoint answered 200 with no settlement: nothing was
+              charged, so there is no transaction to link. Say so instead of looking paid. */}
+          {res.ok && !res.paid && t.has_x402 && (
+            <div className="rr-note">No payment was taken — this endpoint returned a result without requesting an x402 charge, so there is no transaction.</div>
+          )}
         </div>
       )}
     </div>

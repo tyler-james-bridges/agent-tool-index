@@ -246,10 +246,48 @@ pub async fn enrich_tool_record(record: &mut ToolRecord, http: &reqwest::Client)
                 .collect()
         })
         .unwrap_or_default();
-    record.has_x402 = value_contains(&manifest, "x402");
+    record.has_x402 = declares_x402(&manifest);
     record.has_auth = manifest.get("authentication").is_some();
     record.manifest = Some(manifest);
     Ok(())
+}
+
+/// True when the manifest actually *declares* x402 payment, not merely mentions it.
+///
+/// A bare substring scan flagged tools that only describe x402 in prose -- e.g.
+/// the verify-tool, whose description says it "decodes ... x402 payment
+/// requirements" and whose output schema has a `has_x402` field. Those tools
+/// charge nothing, so "Pay ... & run" was a lie. We require x402 to appear in a
+/// real declaration: a priced `pricing` entry, or anywhere outside the free-text
+/// `description`/`name` and the `inputs`/`outputs` JSON schemas.
+fn declares_x402(manifest: &Value) -> bool {
+    if manifest_has_pricing_amount(manifest) {
+        return true;
+    }
+    match manifest {
+        Value::Object(map) => map.iter().any(|(key, val)| {
+            let k = key.to_ascii_lowercase();
+            if k == "description" || k == "name" || k == "inputs" || k == "outputs" {
+                return false;
+            }
+            k.contains("x402") || value_contains(val, "x402")
+        }),
+        _ => false,
+    }
+}
+
+/// True when `pricing` carries a concrete amount (array of entries or a single
+/// object). A priced tool is x402 regardless of where the scheme string lives.
+fn manifest_has_pricing_amount(manifest: &Value) -> bool {
+    let entry = match manifest.get("pricing") {
+        Some(Value::Array(items)) => match items.first() {
+            Some(e) => e,
+            None => return false,
+        },
+        Some(obj @ Value::Object(_)) => obj,
+        _ => return false,
+    };
+    entry.get("amount").is_some()
 }
 
 fn value_contains(value: &Value, needle: &str) -> bool {
@@ -267,5 +305,57 @@ pub fn access_label(record: &ToolRecord) -> &'static str {
     match record.access_predicate.as_deref() {
         Some(addr) => predicate_label(addr),
         None => "unknown",
+    }
+}
+
+#[cfg(test)]
+mod x402_tests {
+    use super::declares_x402;
+    use serde_json::json;
+
+    #[test]
+    fn prose_and_schema_mentions_do_not_flag_x402() {
+        // Shape of the verify-tool manifest: x402 only in the description and as a
+        // `has_x402` output-schema key. It charges nothing, so it must read free.
+        let manifest = json!({
+            "name": "verify-tool",
+            "description": "Decodes access predicate and x402 payment requirements.",
+            "endpoint": "https://agenttoolindex.xyz/api/verify",
+            "tags": ["erc-8257", "verification", "trust"],
+            "outputs": { "properties": { "has_x402": { "type": "boolean" } } },
+            "pricing": null
+        });
+        assert!(!declares_x402(&manifest));
+    }
+
+    #[test]
+    fn priced_pricing_entry_flags_x402() {
+        // nft-appraiser: pricing array carries an amount + x402 protocol.
+        let manifest = json!({
+            "name": "nft-appraiser",
+            "pricing": [{ "amount": "50000", "protocol": "x402" }]
+        });
+        assert!(declares_x402(&manifest));
+    }
+
+    #[test]
+    fn pricing_object_with_amount_flags_x402() {
+        // clawdmint: pricing is a single object, not an array.
+        let manifest = json!({
+            "name": "clawdmint",
+            "tags": ["nft", "x402"],
+            "pricing": { "protocol": "x402", "amount": "2.00" }
+        });
+        assert!(declares_x402(&manifest));
+    }
+
+    #[test]
+    fn payment_declaration_flags_x402_without_pricing() {
+        // swarm-skill: no `pricing`, x402 declared under a `payment` object.
+        let manifest = json!({
+            "name": "swarm-skill",
+            "payment": { "protocol": "x402" }
+        });
+        assert!(declares_x402(&manifest));
     }
 }
