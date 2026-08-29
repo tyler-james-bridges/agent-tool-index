@@ -124,7 +124,11 @@ pub async fn apply_event_history(
         }
         if tool.metadata_uri.is_some() && matches!(tool.manifest_status, ManifestStatus::Unchecked)
         {
-            enrich_tool_record(tool, &http).await?;
+            // Attempt to enrich, but continue on error instead of propagating
+            if let Err(err) = enrich_tool_record(tool, &http).await {
+                tool.manifest_status = ManifestStatus::FetchError;
+                tool.error = Some(err.to_string());
+            }
         }
     }
     Ok(())
@@ -174,7 +178,11 @@ pub async fn apply_event_history_multi_chain(
         }
         if tool.metadata_uri.is_some() && matches!(tool.manifest_status, ManifestStatus::Unchecked)
         {
-            enrich_tool_record(tool, &http).await?;
+            // Attempt to enrich, but continue on error instead of propagating
+            if let Err(err) = enrich_tool_record(tool, &http).await {
+                tool.manifest_status = ManifestStatus::FetchError;
+                tool.error = Some(err.to_string());
+            }
         }
     }
     Ok(())
